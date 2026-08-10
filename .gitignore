@@ -1,0 +1,26 @@
+# Personal usage data — never commit. These live in %APPDATA%\ScreenTimer
+# at runtime; copies here are leftovers from before that move.
+/data.json
+/settings.json
+/app_paths.json
+/screen-timer.lock
+/icon.ico
+*.bak
+
+# Local tooling config (contains absolute paths)
+.claude/
+
+# Local design harness — _state.json is a dump of real usage data
+ui/_*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller output
+build/
+dist/
+*.manifest

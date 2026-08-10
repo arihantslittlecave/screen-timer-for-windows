@@ -1,0 +1,735 @@
+/* Dark is the pure brand orange (F28C28) on near-black — the "amber
+   terminal" reference point. Light keeps the same flat/monospace/hairline
+   language but can't use pure F28C28 as a foreground accent: it fails
+   contrast against a light ground (~2.4:1, needs 3:1+), so light mode uses
+   the same darkened accent (#c66b10) the rest of this app already settled
+   on for exactly that reason. */
+/* --rule is a hairline *divider* weight — deliberately near-invisible. Controls
+   need their own, heavier tokens: reusing --rule for button borders left them
+   at 1.2:1 on the light ground, so buttons read as floating text with no edge.
+   --control-ink is near-ink rather than --muted because a 10.5px label needs
+   4.5:1, which --muted misses on light (3.75:1). --accent-ink is a darkened
+   accent used only for *text*; the pure accent stays on bars/dial/fills where
+   3:1 is the bar. */
+[data-theme="dark"] {
+  --ground: #0d0c0a;
+  --rule: #2b2620;
+  --ink: #e8e1d2;
+  --muted: #7d7566;
+  --accent: #f28c28;
+  --accent-fg: #1a1006;
+  --control-border: #5f5443;
+  --control-ink: #a49a88;
+  --accent-ink: #f28c28;
+  /* accent blended ~40% into the ground: marks "today" and the selected
+     control without competing with the solid accent used for a picked day */
+  --accent-dim: #693f16;
+}
+
+/* Light was a uniformly warm beige, which left the orange competing with its
+   own background and everything looking slightly muddy. Ground is now a near
+   white and the greys are neutral, so the accent is the only warm thing on the
+   page and reads as signal. Every pair below is checked against WCAG AA:
+   4.5:1 for text, 3:1 for control borders. */
+[data-theme="light"] {
+  --ground: #fbfaf7;
+  --rule: #e4e0d8;
+  --ink: #171614;
+  --muted: #63605a;
+  --accent: #c2670c;
+  /* Dark, not white: on this orange, dark text measures 4.68:1 vs 3.73:1. */
+  --accent-fg: #1a1006;
+  --control-border: #928d86;
+  --control-ink: #383632;
+  --accent-ink: #9a5309;
+  --accent-dim: #e9ca9c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Chromium leaves a transitioning property stuck on its old value when the
+   var() behind it is swapped, so transitions are muted while the theme flips. */
+.theme-switching * {
+  transition: none !important;
+}
+
+html {
+  height: 100%;
+  /* Declared on the root, not just body, so nothing upstream falls back to the
+     UA default (Times New Roman). */
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* Form controls and SVG don't inherit font-family from their parent by default
+   — they fall back to the UA font (Arial here). One rule keeps the whole app
+   on a single family instead of relying on every new control remembering to
+   opt in. */
+button,
+input,
+select,
+textarea,
+svg {
+  font-family: inherit;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow-x: hidden;
+  /* One family for the whole app; every control inherits it. Inter is used
+     when the user happens to have it, but it is not a Windows font and nothing
+     is bundled, so Segoe UI carries the real weight on Windows — near-identical
+     neo-grotesque, present on every machine, zero download. Both have tabular
+     figures, which the timer readouts rely on. */
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.device {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+  transition: border-color 0.2s ease;
+}
+
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.titlebar .name {
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.titlebar .name::before {
+  content: "> ";
+  color: var(--accent);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+  flex-shrink: 0;
+}
+
+.theme-toggle {
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+section {
+  padding: 16px;
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+  transition: border-color 0.2s ease;
+}
+
+.device {
+  overflow-y: auto;
+}
+
+.device::-webkit-scrollbar {
+  width: 8px;
+}
+
+.device::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.device::-webkit-scrollbar-thumb {
+  background: var(--rule);
+}
+
+.device::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.label-row .label {
+  margin-bottom: 0;
+}
+
+section > .label {
+  margin-bottom: 12px;
+  display: block;
+}
+
+/* ---- mini buttons: snooze, back-to-today ---- */
+.mini-btn {
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.mini-btn:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+#back-to-today {
+  margin-top: 10px;
+}
+
+/* ---- today: dial + total ---- */
+.today {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.dial {
+  width: 78px;
+  height: 78px;
+  flex-shrink: 0;
+}
+
+.dial-tick {
+  stroke: var(--rule);
+  stroke-width: 3;
+}
+
+.dial-tick.lit {
+  stroke: var(--accent);
+}
+
+.today-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.total {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.total .unit {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 3px;
+}
+
+.sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.sub .accent {
+  color: var(--accent);
+}
+
+.limit-line {
+  color: var(--muted);
+  font-size: 10.5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+}
+
+.limit-line .val {
+  color: var(--ink);
+}
+
+.limit-line .over {
+  color: var(--accent);
+}
+
+.limit-line:empty {
+  display: none;
+}
+
+/* ---- history ---- */
+.range-toggle {
+  display: flex;
+  gap: 2px;
+}
+
+.range-toggle button {
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.range-toggle button:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+/* Active state needs more than accent-colored text (too subtle at 10.5px) but
+   must not be a solid accent block either — solid accent is the chart bars'
+   language, and a solid button sitting right above the chart read as another
+   bar. A dimmed fill plus a full-strength border keeps controls and data
+   visually separate. */
+.range-toggle button.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--ink);
+}
+
+.week-chart {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 6px;
+  position: relative;
+  height: 56px;
+  /* Set on the chart rather than .label-row so the "Top apps" heading keeps
+     its own spacing. Note this does NOT add to .label-row's 20px — adjacent
+     sibling margins collapse to the larger of the two, so this value *is* the
+     resulting gap. It needs to clear 20px to have any effect at all.
+     Worth the room: a full-height bar is bottom-aligned in a fixed 56px box,
+     so it starts near the very top and was landing ~5px under the buttons. */
+  margin-top: 32px;
+}
+
+/* Was the same color as an empty bar's fill, so on a mostly-empty week the
+   one real bar looked like a floating box with nothing anchoring it — this
+   makes the shared baseline visible enough to read as "7 day-slots, most
+   at zero" rather than "something's wrong". */
+.week-chart::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+.week-chart.dense {
+  gap: 2px;
+}
+
+.week-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  height: 100%;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.week-bar-track {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  width: 100%;
+  justify-content: center;
+}
+
+.week-bar {
+  width: 60%;
+  background: var(--control-border);
+  min-height: 2px;
+  transition: opacity 0.15s ease, height 0.25s ease;
+}
+
+.week-bar.empty {
+  min-height: 0;
+  height: 0 !important;
+}
+
+.week-chart.dense .week-bar {
+  width: 100%;
+}
+
+.week-col:hover .week-bar {
+  opacity: 0.7;
+}
+
+/* Three distinct states, because "today" and "selected" are different facts
+   and previously shared one solid-accent rule: picking any past day left two
+   identical orange bars with nothing saying which one was picked.
+   plain = neutral, today = dimmed accent, selected = solid accent. */
+.week-bar.today {
+  background: var(--accent-dim);
+}
+
+.week-col.selected .week-bar {
+  background: var(--accent);
+}
+
+.week-day {
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.week-chart.dense .week-day {
+  display: none;
+}
+
+/* Same split as the bars — the label alone shouldn't claim two days are picked. */
+.week-day.today {
+  color: var(--muted);
+}
+
+.week-col.selected .week-day {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.chart-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 10px;
+  text-align: center;
+}
+
+.chart-hint:empty {
+  display: none;
+}
+
+/* ---- top apps ---- */
+.app-row-wrap + .app-row-wrap {
+  margin-top: 6px;
+}
+
+.app-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-left: 2px solid transparent;
+}
+
+.app-row.over-limit {
+  border-left-color: var(--accent);
+}
+
+.app-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.app-fallback {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
+.app-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.app-bar {
+  width: 56px;
+  height: 8px;
+  flex-shrink: 0;
+  background: var(--ground);
+  border: 1px solid var(--control-border);
+  position: relative;
+  overflow: hidden;
+}
+
+.app-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: var(--pct);
+  background: var(--accent);
+  opacity: var(--op, 1);
+}
+
+.limit-note {
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.over-tag {
+  font-size: 10px;
+  color: var(--accent);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.app-time {
+  font-size: 11.5px;
+  color: var(--muted);
+  flex-shrink: 0;
+  width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-btn {
+  border: none;
+  background: transparent;
+  color: var(--control-ink);
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.limit-btn:hover {
+  color: var(--accent-ink);
+}
+
+.see-more-btn {
+  width: 100%;
+  margin-top: 14px;
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 6px 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.see-more-btn:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.empty-note {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ---- limit editor popover ---- */
+.limit-editor {
+  padding: 10px 4px 4px;
+  margin-top: 4px;
+  border-top: 1px dashed var(--rule);
+}
+
+.limit-editor-label {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.time-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.time-picker-row .select-input {
+  flex: 1;
+  text-align: center;
+}
+
+.time-picker-sep {
+  font-size: 10.5px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.limit-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.limit-editor-actions-right {
+  display: flex;
+  gap: 6px;
+}
+
+.ghost-btn {
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.ghost-btn:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.ghost-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.ghost-btn.primary:hover {
+  opacity: 0.9;
+  color: var(--accent-fg);
+}
+
+/* ---- settings ---- */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.setting-row + .setting-row {
+  margin-top: 12px;
+}
+
+.setting-label {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.seg {
+  display: flex;
+  gap: 2px;
+}
+
+.seg button {
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.seg button:hover {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.seg button.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--ink);
+}
+
+.select-input {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--control-border);
+  padding: 5px 24px 5px 9px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a49a88' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+/* The chevron's stroke color is baked into the SVG data URI, so it can't
+   read var(--control-ink) directly — swapped per theme instead. */
+[data-theme="light"] .select-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%234a4231' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.select-input:hover {
+  border-color: var(--accent-ink);
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.save-status {
+  font-size: 10.5px;
+  color: var(--accent);
+  height: 14px;
+  margin-top: 10px;
+  text-align: right;
+}

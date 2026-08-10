@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>Screen Timer</title>
+  <link rel="stylesheet" href="style.css?v=34" />
+</head>
+<body>
+  <div class="device">
+    <div class="titlebar">
+      <span class="name">screen-timer</span>
+      <div class="titlebar-right">
+        <span class="dot" id="status-dot" title="actively tracking"></span>
+        <button class="theme-toggle" id="theme-toggle" type="button" title="toggle dark/light"></button>
+      </div>
+    </div>
+
+    <section class="today">
+      <svg class="dial" id="dial" viewBox="0 0 100 100"><g id="ticks"></g></svg>
+      <div class="today-text">
+        <div class="total"><span id="total-value">0m</span><span class="unit" id="day-label">/ today</span></div>
+        <div class="sub" id="break-sub">
+          next break <span class="accent" id="break-time">in --</span>
+          <button class="mini-btn hidden" id="snooze-btn" type="button">snooze</button>
+        </div>
+        <div class="limit-line" id="limit-line"></div>
+        <button class="mini-btn hidden" id="back-to-today" type="button">&lt; back to today</button>
+      </div>
+    </section>
+
+    <section>
+      <div class="label-row">
+        <div class="label">Top apps</div>
+      </div>
+      <div id="app-list"></div>
+      <button class="see-more-btn hidden" id="show-more-apps" type="button"></button>
+    </section>
+
+    <section>
+      <div class="label-row">
+        <div class="label">History</div>
+        <div class="range-toggle" id="range-segment" data-value="7">
+          <button type="button" data-value="7">7d</button>
+          <button type="button" data-value="30">30d</button>
+        </div>
+      </div>
+      <div class="week-chart" id="week-chart"></div>
+      <div class="chart-hint" id="chart-hint">pick a day to see its breakdown</div>
+    </section>
+
+    <section>
+      <div class="label">Settings</div>
+      <div class="setting-row">
+        <span class="setting-label">break every</span>
+        <div class="seg" id="break-segment" data-value="30">
+          <button type="button" data-value="15">15m</button>
+          <button type="button" data-value="30">30m</button>
+          <button type="button" data-value="45">45m</button>
+          <button type="button" data-value="60">60m</button>
+          <button type="button" data-value="90">90m</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">daily limit</span>
+        <select class="select-input" id="goal-select"></select>
+      </div>
+      <div class="save-status" id="save-status"></div>
+    </section>
+  </div>
+  <script src="app.js?v=34"></script>
+</body>
+</html>
