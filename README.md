@@ -1,4 +1,4 @@
-# Screen Timer
+# Screen Timer for Windows
 
 A screen-time tracker for Windows — the desktop equivalent of Android's Digital
 Wellbeing. It sits in your tray, records which apps you actually use, and nudges
@@ -67,7 +67,7 @@ Everything stays local, in `%APPDATA%\ScreenTimer\`:
 | `data.json` | Per-day totals and per-app seconds |
 | `settings.json` | Your break interval, daily limit, app limits |
 | `app_paths.json` | Where each app's `.exe` lives, used to read its icon |
-| `error.log` | Written only if something goes wrong |
+| `screen-timer.log` | Startup breadcrumbs, and any error worth reporting |
 
 To delete your history, delete that folder.
 
@@ -83,8 +83,8 @@ your list is only apps you actually chose to use.
 Requires Python 3.11+ on Windows.
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/screen-timer.git
-cd screen-timer
+git clone https://github.com/YOUR-USERNAME/screen-timer-for-windows.git
+cd screen-timer-for-windows
 pip install -r requirements.txt
 pyinstaller screen-timer.spec
 ```

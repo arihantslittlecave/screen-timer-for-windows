@@ -630,7 +630,15 @@ section > .label {
   color: var(--control-ink);
   font-family: inherit;
   font-size: 10.5px;
-  padding: 4px 10px;
+  /* Fixed height + centred content rather than padding alone: at fractional
+     display scaling a 1px border becomes a sub-pixel value that rounds up on
+     one button and down on its neighbour, so padding-derived heights made
+     cancel and ok visibly different sizes. */
+  height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease;
 }

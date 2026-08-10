@@ -1,4 +1,5 @@
 import functools
+import threading
 import traceback
 from datetime import datetime
 
@@ -12,6 +13,8 @@ MIN_APP_SECONDS = 60
 MAX_TOP_APPS = 8
 ALLOWED_RANGES = (7, 30)
 SNOOZE_MINUTES = 5
+
+_log_lock = threading.Lock()
 
 
 def _format_delta(current, previous):
@@ -27,20 +30,30 @@ def _format_delta(current, previous):
 
 
 def log_info(label, text=""):
+    """Normal-operation breadcrumb (startup, tray, first bridge call)."""
     log_exception(label, text)
 
 
 def log_exception(label, text):
-    """Appends to %APPDATA%\\ScreenTimer\\error.log.
+    """Appends to %APPDATA%\\ScreenTimer\\screen-timer.log.
 
     A packaged build has no console, so an exception crossing the JS bridge
     otherwise vanishes: the UI's refresh() catches it and the window just sits
     there blank. A file on disk is the only way a user can report what broke.
+
+    Named for the app rather than for errors because it also carries ordinary
+    startup breadcrumbs — a file called error.log sitting in a healthy install
+    reads as something being wrong.
     """
+    # The tray thread, the tracking thread and the UI bridge all log. Writing
+    # the header and body as two calls let concurrent writers interleave
+    # mid-line and shred each other's entries, which was actually observed.
+    # One write, under one lock.
+    entry = f"--- {datetime.now().isoformat(timespec='seconds')} {label}\n{text.rstrip()}\n"
     try:
-        with open(user_data_path("error.log"), "a", encoding="utf8") as f:
-            f.write(f"--- {datetime.now().isoformat(timespec='seconds')} {label}\n")
-            f.write(text.rstrip() + "\n")
+        with _log_lock:
+            with open(user_data_path("screen-timer.log"), "a", encoding="utf8") as f:
+                f.write(entry)
     except OSError:
         pass  # logging must never be the thing that breaks the app
 

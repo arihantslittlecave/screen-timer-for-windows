@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 import winreg
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
@@ -323,8 +324,19 @@ def main():
         "screen-timer", icon_art.make_badge(TRAY_ICON_SIZE), "Screen Timer", build_menu()
     )
 
+    def run_tray():
+        # A bare thread target that raises dies silently: the tray icon never
+        # appears and nothing anywhere says why. This is the app's only handle
+        # once the window is hidden, so a failure here has to be recorded.
+        try:
+            log_info("tray", "starting pystray icon")
+            icon.run()
+            log_info("tray", "pystray icon.run() returned")
+        except Exception:
+            log_info("tray-failed", traceback.format_exc())
+
     threading.Thread(target=tracking_loop, daemon=True).start()
-    threading.Thread(target=icon.run, daemon=True).start()
+    threading.Thread(target=run_tray, daemon=True).start()
 
     log_info(
         "startup",
