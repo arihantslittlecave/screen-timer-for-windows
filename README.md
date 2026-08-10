@@ -56,6 +56,19 @@ or 30-day history. Click any day in the chart to see that day's breakdown.
 Task Manager → **Startup apps** → Screen Timer → Disable. It won't turn itself
 back on.
 
+### Uninstall
+
+There's no installer, so there's nothing to uninstall — but to remove every
+trace:
+
+1. Right-click the tray icon → **Quit**
+2. Task Manager → **Startup apps** → Screen Timer → **Disable**
+3. Delete `ScreenTimer.exe`
+4. Delete `%APPDATA%\ScreenTimer` (this is your history — paste that path into
+   File Explorer's address bar)
+
+Nothing else is touched, and nothing is left in Program Files.
+
 ---
 
 ## What it records, and where
