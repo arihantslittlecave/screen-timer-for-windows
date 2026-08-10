@@ -1,16 +1,17 @@
-/* Dark is the pure brand orange (F28C28) on near-black — the "amber
-   terminal" reference point. Light keeps the same flat/monospace/hairline
-   language but can't use pure F28C28 as a foreground accent: it fails
-   contrast against a light ground (~2.4:1, needs 3:1+), so light mode uses
-   the same darkened accent (#c66b10) the rest of this app already settled
-   on for exactly that reason. */
-/* --rule is a hairline *divider* weight — deliberately near-invisible. Controls
-   need their own, heavier tokens: reusing --rule for button borders left them
-   at 1.2:1 on the light ground, so buttons read as floating text with no edge.
-   --control-ink is near-ink rather than --muted because a 10.5px label needs
-   4.5:1, which --muted misses on light (3.75:1). --accent-ink is a darkened
-   accent used only for *text*; the pure accent stays on bars/dial/fills where
-   3:1 is the bar. */
+/* Two themes, one shape. Dark is the brand orange (#f28c28) on near-black — the
+   "amber terminal" reference point. Light is NOT the same palette inverted; see
+   the note on its --accent below.
+
+   Token roles, because several look similar and are not interchangeable:
+     --rule            hairline dividers only. Deliberately near-invisible;
+                       using it on a control leaves the control with no edge.
+     --control-border  borders of things you can click. Meets 3:1.
+     --control-ink     labels on those controls. Near-ink, because --muted
+                       misses 4.5:1 at 10.5px on the light ground.
+     --accent          the single accent, for fills AND text in both themes.
+     --accent-dim      accent blended toward the ground. Marks "today" and the
+                       selected control, so neither competes with the solid
+                       accent that means "picked day". */
 [data-theme="dark"] {
   --ground: #0d0c0a;
   --rule: #2b2620;
@@ -20,7 +21,6 @@
   --accent-fg: #1a1006;
   --control-border: #5f5443;
   --control-ink: #a49a88;
-  --accent-ink: #f28c28;
   /* accent blended ~40% into the ground: marks "today" and the selected
      control without competing with the solid accent used for a picked day */
   --accent-dim: #693f16;
@@ -36,12 +36,18 @@
   --rule: #e4e0d8;
   --ink: #171614;
   --muted: #63605a;
-  --accent: #c2670c;
-  /* Dark, not white: on this orange, dark text measures 4.68:1 vs 3.73:1. */
-  --accent-fg: #1a1006;
+  /* Deeper and more saturated than the dark theme's orange, on purpose. Orange
+     is mid-luminance: against near-black it is far brighter than its ground
+     (~8:1) and glows, but against near-white the same colour is only ~3.8:1
+     darker and reads washed out. This one gets to 5.3:1 while keeping
+     saturation at 0.98, so it still looks orange rather than brown, and it
+     clears 4.5:1 — which lets fills and text share a single accent token. */
+  --accent: #a35304;
+  /* Light, not dark: on an accent this deep, white text measures 5.14:1
+     against 3.39:1. The opposite was true of the lighter orange. */
+  --accent-fg: #fbf6ee;
   --control-border: #928d86;
   --control-ink: #383632;
-  --accent-ink: #9a5309;
   --accent-dim: #e9ca9c;
 }
 
@@ -149,8 +155,8 @@ body {
 }
 
 .theme-toggle:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 section {
@@ -220,8 +226,8 @@ section > .label {
 }
 
 .mini-btn:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 #back-to-today {
@@ -321,8 +327,8 @@ section > .label {
 }
 
 .range-toggle button:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Active state needs more than accent-colored text (too subtle at 10.5px) but
@@ -438,7 +444,7 @@ section > .label {
 }
 
 .week-col.selected .week-day {
-  color: var(--accent-ink);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -555,7 +561,7 @@ section > .label {
 }
 
 .limit-btn:hover {
-  color: var(--accent-ink);
+  color: var(--accent);
 }
 
 .see-more-btn {
@@ -572,8 +578,8 @@ section > .label {
 }
 
 .see-more-btn:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .empty-note {
@@ -644,8 +650,8 @@ section > .label {
 }
 
 .ghost-btn:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .ghost-btn.primary {
@@ -693,8 +699,8 @@ section > .label {
 }
 
 .seg button:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .seg button.active {
@@ -726,7 +732,7 @@ section > .label {
 }
 
 .select-input:hover {
-  border-color: var(--accent-ink);
+  border-color: var(--accent);
 }
 
 .select-input:focus {

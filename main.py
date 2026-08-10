@@ -33,14 +33,17 @@ SAVE_INTERVAL_SECONDS = 10
 TRAY_ICON_SIZE = 24  # under icon_art.TRACK_MIN_SIZE, so pystray gets the
 # already-simplified arc-only variant directly rather than a detailed 64px
 # image that Windows would then have to shrink itself for the actual tray slot
-WINDOW_TITLE = "Screen Timer"
+APP_NAME = "Screen Timer for Windows"
+# The window title doubles as the handle _focus_existing_instance() looks up
+# with FindWindow, so both sides must read it from here.
+WINDOW_TITLE = APP_NAME
 LOCK_FILE = user_data_path("screen-timer.lock")
 
 # Notifications go through the real WinRT ToastNotificationManager, not
 # plyer — plyer's Windows backend uses the legacy Shell_NotifyIconW balloon
 # API, which Windows auto-upgrades into a toast but does NOT resolve the
 # AppUserModelId's registered DisplayName/icon, so it showed the raw AUMID
-# string (or "Python" with no AUMID set at all) instead of "Screen Timer".
+# string (or "Python" with no AUMID set at all) instead of the app name.
 # create_toast_notifier_with_id(app_id) does the proper registry lookup —
 # confirmed by testing both paths.
 #
@@ -124,7 +127,7 @@ def _acquire_single_instance_lock():
 
 def _register_app_identity():
     """Claims our own AUMID and points it at our name/icon in the registry,
-    so Windows attributes notifications to "Screen Timer" instead of
+    so Windows attributes notifications to the app name instead of
     falling back to python.exe's identity. Must run before any window is
     created — SetCurrentProcessExplicitAppUserModelID only works pre-window
     and only once per process."""
@@ -137,7 +140,7 @@ def _register_app_identity():
 
     key_path = f"Software\\Classes\\AppUserModelId\\{APP_USER_MODEL_ID}"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "Screen Timer")
+        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
         winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, icon_path)
 
 
@@ -321,7 +324,7 @@ def main():
     window.events.closing += on_closing
 
     icon = pystray.Icon(
-        "screen-timer", icon_art.make_badge(TRAY_ICON_SIZE), "Screen Timer", build_menu()
+        "screen-timer", icon_art.make_badge(TRAY_ICON_SIZE), APP_NAME, build_menu()
     )
 
     def run_tray():
