@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import icon_art
 
-W, H = 1280, 400
+W, H = 1280, 420
 SUPERSAMPLE = 2  # drawn large and downsampled; PIL has no anti-aliased primitives
 
 GROUND = (13, 12, 10)
@@ -52,19 +52,24 @@ def build():
     img = Image.new("RGB", (W * s, H * s), GROUND)
     draw = ImageDraw.Draw(img)
 
-    title_f = ImageFont.truetype(BOLD, int(58 * s))
-    tag_f = ImageFont.truetype(REGULAR, int(26 * s))
-    meta_f = ImageFont.truetype(REGULAR, int(19 * s))
+    # Sized for how GitHub actually renders this: the banner is downscaled to
+    # roughly 900px wide in a README, so type set for the 1280px canvas ends up
+    # noticeably smaller than it looks here.
+    title_f = ImageFont.truetype(BOLD, int(74 * s))
+    tag_f = ImageFont.truetype(REGULAR, int(31 * s))
+    sub_f = ImageFont.truetype(REGULAR, int(23 * s))
+    meta_f = ImageFont.truetype(REGULAR, int(21 * s))
 
     margin = int(84 * s)
-    badge_px = int(112 * s)
+    badge_px = int(132 * s)
     badge = icon_art.make_badge(badge_px)
     gap = int(32 * s)
 
     line1, line2 = "Screen Timer", "for Windows"
-    title_line_h = int(66 * s)
-    tag_h = int(46 * s)
-    block_h = title_line_h * 2 + tag_h
+    title_line_h = int(82 * s)
+    tag_h = int(48 * s)
+    sub_h = int(34 * s)
+    block_h = title_line_h * 2 + tag_h + sub_h
 
     # Centre the lockup in the space ABOVE the footer strip, not against the
     # whole canvas height: the footer occupies the bottom band, so centring on
@@ -78,16 +83,18 @@ def build():
     tx = margin + badge_px + gap
     draw.text((tx, block_top), line1, font=title_f, fill=INK)
     draw.text((tx, block_top + title_line_h), line2, font=title_f, fill=ACCENT)
+    tag_y = block_top + title_line_h * 2 + int(12 * s)
+    draw.text((tx, tag_y), "Where did your day actually go?", font=tag_f, fill=INK)
     draw.text(
-        (tx, block_top + title_line_h * 2 + int(10 * s)),
-        "Where did your day actually go?",
-        font=tag_f,
+        (tx, tag_y + tag_h),
+        "Tracks the apps you actually use, and tells you when to stop.",
+        font=sub_f,
         fill=MUTED,
     )
 
     # One complete dial on the right, its centre on the same line as the
     # lockup's so the two halves read as one row rather than two stacked things.
-    dial_r = int(118 * s)
+    dial_r = int(124 * s)
     _dial(draw, W * s - margin - dial_r, int(block_mid), dial_r, int(5 * s))
 
     # Footer sits under the text, sharing its left edge.
