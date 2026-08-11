@@ -54,14 +54,34 @@ off.
 **Uninstall:** quit it, disable the startup entry, delete `ScreenTimer.exe`,
 then delete `%APPDATA%\ScreenTimer`. Nothing is left behind.
 
+## How it counts
+
+Fair question if you're used to a laptop: you've got fifteen things open at
+once, so what does "1 hour" even mean?
+
+Every second, it checks which window you're actually in, and gives that one
+second to that one app. That's the whole rule.
+
+So having a pile of windows open doesn't inflate anything. Only one window can
+be focused at a time, so a second only ever goes to one app, and your daily
+total is always exactly the sum of your apps. Never more.
+
+It also stops counting after 60 seconds of no keyboard or mouse, so going for
+lunch doesn't quietly rack up screen time.
+
+Worth knowing this measures attention, not what's running. Music playing in the
+background while you work counts as whatever you're working in, and a download
+chugging away for three hours counts as nothing at all. Your phone does it the
+same way.
+
 ## Your data
 
 Everything lives in `%APPDATA%\ScreenTimer\` and never leaves your machine.
 Delete that folder to wipe your history.
 
-It only counts the app you're actively using and stops after 60 seconds of no
-input, so stepping away doesn't inflate your numbers. Windows system stuff
-like the lock screen and Start menu is ignored.
+Windows system stuff like the lock screen, Start menu and search is ignored, so
+your list is only apps you actually chose to open. It doesn't count itself
+either.
 
 ## Building it yourself
 
