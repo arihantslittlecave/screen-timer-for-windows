@@ -33,8 +33,11 @@ launch and starts tracking right away.
 
 > **Blue "Windows protected your PC" popup?** Click **More info** →
 > **Run anyway**. It just means the app isn't signed with a paid certificate.
-> Every small indie app hits this. All the source is right here if you'd
-> rather build it yourself.
+> Every small indie app hits this.
+>
+> Being careful is fair though. Have a look at
+> [what's actually in here](#not-sure-whats-in-here), or
+> [build it yourself](#building-it-yourself) and skip my `.exe` entirely.
 
 ## Using it
 
@@ -97,28 +100,50 @@ pyinstaller screen-timer.spec
 Your `.exe` lands in `dist/`. Or run it straight from source with
 `python main.py`.
 
-<details>
-<summary>How it's put together</summary>
+## Not sure what's in here?
+
+Fair. You're about to run an unsigned `.exe` off the internet. Here's the whole
+thing, 1,300 lines, nothing hidden.
+
+**Two folders:**
+
+| | |
+|---|---|
+| `assets/` | Pictures. The icon, the banner, the screenshots |
+| `ui/` | The window itself. `index.html` is the layout, `style.css` the colours, `app.js` the clicking |
+
+**The app:**
 
 | File | What it does |
 |---|---|
-| `main.py` | Tray icon, window, tracking loop, notifications |
-| `api.py` | Bridge between the UI and Python |
-| `storage.py` | Reads and writes the JSON, handles day rollover |
-| `active_window.py` | Which app has focus |
-| `idle.py` | Time since you last touched the keyboard or mouse |
-| `icons.py` | Pulls real icons out of `.exe` files |
-| `icon_art.py` | Draws the app's tray badge |
-| `autostart.py` | The startup registry entry |
-| `first_run.py` | One-time setup on first launch |
-| `paths.py` | Bundled files vs. your user data |
-| `ui/` | The interface, plain HTML, CSS and JavaScript |
+| `main.py` | The heart. Tray icon, window, the loop that counts each second, notifications |
+| `storage.py` | Reads and writes your JSON, handles day rollover, ignores system apps |
+| `api.py` | Passes messages between the window and Python |
+
+**Small helpers, one job each:**
+
+| File | What it does |
+|---|---|
+| `idle.py` | How long since you touched the keyboard |
+| `active_window.py` | Which app has focus right now |
+| `runtime.py` | The break countdown |
+| `paths.py` | Where files live, bundled vs. your data |
+| `icons.py` | Pulls real icons out of other apps' `.exe` files |
+| `icon_art.py` | Draws the orange badge |
+| `autostart.py` | The start-on-login registry entry |
+| `first_run.py` | First-launch setup |
+
+**Build files:** `screen-timer.spec` and `version_info.txt` are the recipe for
+the `.exe`. `make_banner.py` draws the banner up top and isn't part of the app.
+
+**What it does NOT contain:** any networking code. There is no `requests`, no
+`urllib`, no sockets, no URLs it calls. The app cannot send your data anywhere
+because there is nothing in it that can talk to the internet. Search the repo
+yourself if you like.
 
 The UI is a local HTML page rendered through
-[pywebview](https://pywebview.flowrl.com/) in Windows' built-in WebView2. No
-bundled browser.
-
-</details>
+[pywebview](https://pywebview.flowrl.com/) in Windows' built-in WebView2, so
+there's no bundled browser either.
 
 ## License
 
