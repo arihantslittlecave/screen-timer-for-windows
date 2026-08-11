@@ -18,7 +18,12 @@ a = Analysis(
             for f in os.listdir('ui')
             if not f.startswith('_')
         ],
-        ('assets', 'assets'),
+        # assets/ is deliberately NOT bundled. Nothing reads it at runtime:
+        # the tray badge and the .ico are drawn programmatically by icon_art
+        # into the user data dir, and the rest of the folder is the banner and
+        # screenshots that only exist for the README. Shipping them put ~210KB
+        # of documentation images inside every download.
+        # The exe's own icon below is a build-time reference, not a bundled file.
         # pywebview's js/*.js ARE the Python<->JS bridge: without them
         # window.pywebview.api is never injected, so the UI loads, renders its
         # static markup, and then sits there permanently blank with no error.

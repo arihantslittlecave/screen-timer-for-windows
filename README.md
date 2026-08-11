@@ -134,7 +134,7 @@ thing, 1,300 lines, nothing hidden.
 | `first_run.py` | First-launch setup |
 
 **Build files:** `screen-timer.spec` and `version_info.txt` are the recipe for
-the `.exe`. `make_banner.py` draws the banner up top and isn't part of the app.
+turning the source into the `.exe`.
 
 **What it does NOT contain:** any networking code. There is no `requests`, no
 `urllib`, no sockets, no URLs it calls. The app cannot send your data anywhere
