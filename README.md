@@ -103,3 +103,8 @@ bundled browser.
 ## License
 
 MIT, do whatever you want with it. See [LICENSE](LICENSE).
+
+---
+
+Built by [arihant](https://github.com/arihantslittlecave). If you use it and
+something breaks, open an issue and I'll take a look.
