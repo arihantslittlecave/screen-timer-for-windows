@@ -1,3 +1,5 @@
+![Screen Timer for Windows](assets/banner.png)
+
 # Screen Timer for Windows
 
 Ever wonder where your whole day went? Yeah, same. This little app sits quietly
@@ -7,6 +9,18 @@ for your PC.
 
 It's free, it's open source, and it doesn't phone home. Everything stays on
 your machine. No account, no signup, no ads, none of that.
+
+---
+
+## What it looks like
+
+| Dark | Light |
+|---|---|
+| <img src="assets/screenshot-dark.png" width="380" alt="Screen Timer in dark mode"> | <img src="assets/screenshot-light.png" width="380" alt="Screen Timer in light mode"> |
+
+Your day's total with a dial that fills as you approach your limit, which apps
+ate the time, and a week of history you can click through. Toggle themes from
+the top right.
 
 ---
 
