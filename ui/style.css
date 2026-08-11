@@ -121,21 +121,18 @@ body {
   transition: border-color 0.2s ease;
 }
 
-.titlebar-right {
+/* No app name here: the OS title bar directly above already shows it next to
+   the icon, and repeating it burned a line of a 370px-tall window to say the
+   same thing twice. This row carries the one thing the title bar can't —
+   whether tracking is actually live. */
+.titlebar .status {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.titlebar .name {
-  color: var(--ink);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-}
-
-.titlebar .name::before {
-  content: "> ";
-  color: var(--accent);
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .dot {

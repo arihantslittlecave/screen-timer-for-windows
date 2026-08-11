@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <title>Screen Timer for Windows</title>
-  <link rel="stylesheet" href="style.css?v=38" />
+  <link rel="stylesheet" href="style.css?v=39" />
 </head>
 <body>
   <div class="device">
     <div class="titlebar">
-      <span class="name">screen-timer for windows</span>
-      <div class="titlebar-right">
-        <span class="dot" id="status-dot" title="actively tracking"></span>
-        <button class="theme-toggle" id="theme-toggle" type="button" title="toggle dark/light"></button>
-      </div>
+      <span class="status"><span class="dot" id="status-dot"></span>tracking</span>
+      <button class="theme-toggle" id="theme-toggle" type="button" title="toggle dark/light"></button>
     </div>
 
     <section class="today">
@@ -67,6 +64,6 @@
       <div class="save-status" id="save-status"></div>
     </section>
   </div>
-  <script src="app.js?v=38"></script>
+  <script src="app.js?v=39"></script>
 </body>
 </html>
