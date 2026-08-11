@@ -63,8 +63,34 @@ def _pin_tray_icon_when_ready(exe_path):
         time.sleep(_PIN_INTERVAL_SECONDS)
 
 
+def ensure_tray_pinned(exe_path):
+    """Re-asserts the taskbar pin on every launch, not just the first.
+
+    Windows resets IsPromoted in a few situations (the notify entry being
+    recreated, Explorer restarting, an upgrade), and pinning only once meant
+    the icon silently fell back into the hidden overflow with nothing to put
+    it back. The whole point of this app is glanceability, so the icon being
+    reachable matters more than being precious about setting it once.
+
+    Off-thread because the registry entry doesn't exist until pystray has
+    added the icon, which races with startup.
+    """
+    try:
+        threading.Thread(
+            target=_pin_tray_icon_when_ready, args=(exe_path,), daemon=True
+        ).start()
+    except Exception:
+        pass
+
+
 def run(exe_path):
-    """Best-effort: a failure here must never stop the app from starting."""
+    """First-launch setup. Best-effort: a failure here must never stop the app.
+
+    Only start-on-login is gated behind first_run_done. That gate exists so a
+    user who deliberately turns autostart off does not find it back on next
+    launch. The tray pin is deliberately NOT gated: see ensure_tray_pinned.
+    """
+    ensure_tray_pinned(exe_path)
     try:
         settings = storage.load_settings()
         if settings.get("first_run_done"):
@@ -72,10 +98,5 @@ def run(exe_path):
         autostart.set_enabled(True)
         settings["first_run_done"] = True
         storage.save_settings(settings)
-        # Off-thread: the tray entry doesn't exist until pystray has added the
-        # icon, and blocking startup on a registry poll would delay the window.
-        threading.Thread(
-            target=_pin_tray_icon_when_ready, args=(exe_path,), daemon=True
-        ).start()
     except Exception:
         pass
