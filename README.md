@@ -2,10 +2,19 @@
 
 # Screen Timer for Windows
 
-Ever wonder where your whole day went? Same. This app sits in your taskbar,
-tracks which apps you actually use, and nudges you to take breaks.
+My phone tells me I average 6 hours a day on it. Rough, but at least I know.
 
-Free, open source, no account, no telemetry. Everything stays on your machine.
+Then it hit me: nothing was telling me what I do on my laptop. Which is where
+I actually spend most of my day.
+
+So I went looking. Everything I found wanted an account, or a subscription, or
+wanted to send my activity off to someone's server. Nah.
+
+Made my own instead.
+
+It sits in your taskbar, tracks which apps you actually use, and nudges you to
+take breaks. Free, open source, no account, no telemetry. Nothing ever leaves
+your machine.
 
 <table>
 <tr>

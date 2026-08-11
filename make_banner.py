@@ -56,47 +56,43 @@ def build():
     tag_f = ImageFont.truetype(REGULAR, int(26 * s))
     meta_f = ImageFont.truetype(REGULAR, int(19 * s))
 
-    # Decorative dials bleed off both edges, so the composition stays
-    # symmetric instead of being weighted to one side.
-    _dial(draw, int(-40 * s), int(H * s / 2), int(170 * s), int(5 * s))
-    # Turned half a revolution so its lit arc faces inward, onto the canvas.
-    _dial(draw, int((W + 40) * s), int(H * s / 2), int(170 * s), int(5 * s), rotate=math.pi)
-
+    margin = int(84 * s)
     badge_px = int(112 * s)
     badge = icon_art.make_badge(badge_px)
-    gap = int(34 * s)
+    gap = int(32 * s)
 
     line1, line2 = "Screen Timer", "for Windows"
-    w1 = draw.textlength(line1, font=title_f)
-    w2 = draw.textlength(line2, font=title_f)
-    text_w = max(w1, w2)
-
-    # Centre the badge+text lockup as one unit
-    lockup_w = badge_px + gap + text_w
-    lockup_x = (W * s - lockup_w) / 2
-
     title_line_h = int(66 * s)
     tag_h = int(46 * s)
     block_h = title_line_h * 2 + tag_h
-    # Centre the lockup in the space ABOVE the footer strip, not in the whole
-    # canvas: centring against the full height leaves it sitting visibly low,
-    # because the footer occupies the bottom band.
+
+    # Centre the lockup in the space ABOVE the footer strip, not against the
+    # whole canvas height: the footer occupies the bottom band, so centring on
+    # the full height leaves everything sitting visibly low.
     footer_zone = int(78 * s)
     block_top = (H * s - footer_zone - block_h) / 2
+    block_mid = block_top + block_h / 2
 
-    img.paste(badge, (int(lockup_x), int(block_top + (block_h - badge_px) / 2 - 6 * s)), badge)
+    img.paste(badge, (margin, int(block_mid - badge_px / 2 - 6 * s)), badge)
 
-    tx = lockup_x + badge_px + gap
+    tx = margin + badge_px + gap
     draw.text((tx, block_top), line1, font=title_f, fill=INK)
     draw.text((tx, block_top + title_line_h), line2, font=title_f, fill=ACCENT)
+    draw.text(
+        (tx, block_top + title_line_h * 2 + int(10 * s)),
+        "Where did your day actually go?",
+        font=tag_f,
+        fill=MUTED,
+    )
 
-    tagline = "Where did your day actually go?"
-    draw.text((tx, block_top + title_line_h * 2 + int(10 * s)), tagline, font=tag_f, fill=MUTED)
+    # One complete dial on the right, its centre on the same line as the
+    # lockup's so the two halves read as one row rather than two stacked things.
+    dial_r = int(118 * s)
+    _dial(draw, W * s - margin - dial_r, int(block_mid), dial_r, int(5 * s))
 
-    # Meta strip, centred on the canvas rather than tucked in a corner
+    # Footer sits under the text, sharing its left edge.
     meta = "free  ·  open source  ·  no account  ·  nothing leaves your machine"
-    mw = draw.textlength(meta, font=meta_f)
-    draw.text(((W * s - mw) / 2, H * s - int(46 * s)), meta, font=meta_f, fill=MUTED)
+    draw.text((margin, H * s - int(50 * s)), meta, font=meta_f, fill=MUTED)
 
     out = img.resize((W, H), Image.LANCZOS)
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "banner.png")
