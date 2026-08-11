@@ -124,7 +124,18 @@ bundled browser.
 
 MIT, do whatever you want with it. See [LICENSE](LICENSE).
 
+## Something not working?
+
+This has been built and tested on one machine, mine. Windows being Windows,
+there's a decent chance something behaves differently on yours.
+
+If it doesn't work, or the tray icon won't show up, or it just does something
+weird, **[open an issue](../../issues/new)** and tell me what happened. I'll
+fix it. Genuinely, I want to know.
+
+It helps a lot if you paste in `%APPDATA%\ScreenTimer\screen-timer.log`, which
+is where the app writes what it was doing when things went sideways.
+
 ---
 
-Built by [arihant](https://github.com/arihantslittlecave). If you use it and
-something breaks, open an issue and I'll take a look.
+Built by [arihant](https://github.com/arihantslittlecave).
