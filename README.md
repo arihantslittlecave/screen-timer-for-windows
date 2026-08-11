@@ -1,99 +1,103 @@
 # Screen Timer for Windows
 
-A screen-time tracker for Windows — the desktop equivalent of Android's Digital
-Wellbeing. It sits in your tray, records which apps you actually use, and nudges
-you to take breaks.
+Ever wonder where your whole day went? Yeah, same. This little app sits quietly
+in your taskbar, tracks which apps you're actually using, and nudges you to
+take a break every now and then. Basically Android's Digital Wellbeing, but
+for your PC.
 
-Free, open source, no account, no telemetry. Nothing leaves your machine.
+It's free, it's open source, and it doesn't phone home. Everything stays on
+your machine. No account, no signup, no ads, none of that.
 
 ---
 
-## Install
+## Getting started
 
-1. Download **`ScreenTimer.exe`** from
-   [Releases](../../releases/latest).
+1. Grab **`ScreenTimer.exe`** from [Releases](../../releases/latest).
 2. Double-click it.
 
-That's it. No installer, no Python, no dependencies.
+That's genuinely it. No installer, no Python, nothing else to set up.
 
-On first launch it sets itself up: starts tracking, adds itself to your startup
-apps, and pins its icon to the taskbar corner. Nothing to configure.
+The first time it opens, it quietly turns on start-on-login and pins itself
+to your taskbar so you never have to think about it again. Just download and
+go.
 
-### "Windows protected your PC"
+### "Windows protected your PC" popup
 
-You'll probably see a blue SmartScreen warning. That happens to every app from a
-developer who hasn't bought a code-signing certificate (they cost hundreds a
-year), not because anything is wrong with the file.
+You'll probably get a blue warning screen the first time you run it. Don't
+worry, nothing's wrong. It just means the app isn't signed with a paid
+certificate (those cost real money every year, and this is a free hobby
+project). Every small indie app hits this.
 
-Click **More info** → **Run anyway**.
+Click **More info**, then **Run anyway**, and you're set.
 
-If you'd rather not take that on faith, the entire source is in this repo and
-you can build the `.exe` yourself — see [Building](#building).
+If you want to be extra careful, the full source is right here in this repo.
+Read it, build it yourself, whatever makes you comfortable. See
+[Building](#building) below.
 
 ---
 
-## Using it
+## How to use it
 
 | | |
 |---|---|
-| **Open it** | Click the orange icon in the taskbar corner |
-| **Close the window** | Click X — it keeps tracking in the background |
-| **Quit properly** | Right-click the tray icon → Quit |
-| **Switch light/dark** | The button in the title bar |
+| **Open the app** | Click the little orange icon in your taskbar |
+| **Close the window** | Hit X, it keeps tracking quietly in the background |
+| **Actually quit it** | Right-click the tray icon, then Quit |
+| **Switch theme** | Button in the top right of the window |
 
-The window shows today's total, a per-app breakdown with real app icons, and 7-
-or 30-day history. Click any day in the chart to see that day's breakdown.
+The window shows your total for today, a breakdown of which apps ate your
+time (with their real icons), and 7 or 30 day history. Click any day on the
+chart to see what that day looked like.
 
 ### Settings
 
-- **Break every** — how long before it reminds you to take a break
-- **Daily limit** — your target; the dial fills up as you approach it, and the
-  line under the total shows how much of it you've used
-- **Per-app limits** — click the small icon at the right of any app row
+- **Break every** sets how often it reminds you to step away
+- **Daily limit** is your target for the day. The dial fills up as you get
+  closer, and the line under your total shows the percentage
+- **Per-app limits** are set by clicking the little icon next to any app
 
-### Stop it starting automatically
+### Turning off auto-start
 
-Task Manager → **Startup apps** → Screen Timer → Disable. It won't turn itself
-back on.
+Changed your mind? Open Task Manager, go to **Startup apps**, find Screen
+Timer, and disable it. It stays off, it won't sneak back on.
 
-### Uninstall
+### Uninstalling
 
-There's no installer, so there's nothing to uninstall — but to remove every
-trace:
+No installer means no uninstaller either, just a couple of manual steps:
 
-1. Right-click the tray icon → **Quit**
-2. Task Manager → **Startup apps** → Screen Timer → **Disable**
+1. Right-click the tray icon and hit **Quit**
+2. Task Manager, **Startup apps**, disable Screen Timer
 3. Delete `ScreenTimer.exe`
-4. Delete `%APPDATA%\ScreenTimer` (this is your history — paste that path into
-   File Explorer's address bar)
+4. Delete the `%APPDATA%\ScreenTimer` folder (paste that into File Explorer's
+   address bar, that's where your history lives)
 
-Nothing else is touched, and nothing is left in Program Files.
+Nothing gets left behind, nothing hides in Program Files.
 
 ---
 
-## What it records, and where
+## What it tracks, and where it lives
 
-Everything stays local, in `%APPDATA%\ScreenTimer\`:
+Everything is stored locally in `%APPDATA%\ScreenTimer\`:
 
-| File | What |
+| File | What's in it |
 |---|---|
-| `data.json` | Per-day totals and per-app seconds |
-| `settings.json` | Your break interval, daily limit, app limits |
-| `app_paths.json` | Where each app's `.exe` lives, used to read its icon |
-| `screen-timer.log` | Startup breadcrumbs, and any error worth reporting |
+| `data.json` | Your daily totals and per-app time |
+| `settings.json` | Break interval, daily limit, per-app limits |
+| `app_paths.json` | Where each app lives, so it can grab its icon |
+| `screen-timer.log` | Startup logs and anything worth reporting if it breaks |
 
-To delete your history, delete that folder.
+Want to wipe your history? Just delete that folder.
 
-It records the app you're actively using, and stops counting after 60 seconds
-with no keyboard or mouse input, so time away from the machine isn't counted.
-Windows shell surfaces — the lock screen, Start menu, search — are ignored, so
-your list is only apps you actually chose to use.
+It only counts the app you're actively using, and stops counting after 60
+seconds of no keyboard or mouse activity, so stepping away doesn't rack up
+fake time. Windows system stuff like the lock screen, Start menu, and search
+gets ignored too, so your list is just the apps you actually chose to open.
 
 ---
 
-## Building
+## Building it yourself
 
-Requires Python 3.11+ on Windows.
+You'll need Python 3.11 or newer on Windows.
 
 ```bash
 git clone https://github.com/YOUR-USERNAME/screen-timer-for-windows.git
@@ -102,7 +106,8 @@ pip install -r requirements.txt
 pyinstaller screen-timer.spec
 ```
 
-The `.exe` lands in `dist/`. To run from source without packaging:
+Your `.exe` shows up in `dist/`. Or just run it straight from source without
+packaging anything:
 
 ```bash
 python main.py
@@ -110,27 +115,28 @@ python main.py
 
 ---
 
-## How it works
+## How it's put together
 
-| File | Role |
+| File | What it does |
 |---|---|
 | `main.py` | Tray icon, window, tracking loop, notifications |
-| `api.py` | The bridge the UI calls into |
-| `storage.py` | Reading and writing the JSON, day rollover |
-| `active_window.py` | Which app currently has focus |
-| `idle.py` | How long since the last input |
+| `api.py` | The bridge between the UI and Python |
+| `storage.py` | Reads and writes the JSON, handles day rollover |
+| `active_window.py` | Figures out which app has focus |
+| `idle.py` | Tracks how long since you last touched the keyboard or mouse |
 | `icons.py` | Pulls real icons out of `.exe` files |
 | `icon_art.py` | Draws the app's own tray badge |
-| `autostart.py` | The startup registry entry |
-| `first_run.py` | One-time setup on first launch |
-| `paths.py` | Bundled resources vs. user data locations |
-| `ui/` | The interface — plain HTML, CSS, and JavaScript |
+| `autostart.py` | Handles the startup registry entry |
+| `first_run.py` | One-time setup that runs on first launch |
+| `paths.py` | Sorts out bundled files vs. your actual user data |
+| `ui/` | The interface itself, plain HTML, CSS, and JavaScript |
 
-The UI is a local HTML page rendered by [pywebview](https://pywebview.flowrl.com/)
-in Windows' built-in WebView2, not a bundled browser.
+The UI is just a local HTML page, rendered through
+[pywebview](https://pywebview.flowrl.com/) using Windows' built-in WebView2.
+No bundled browser, no extra bloat.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. Do whatever you want with it, see [LICENSE](LICENSE) for the fine print.

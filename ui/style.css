@@ -16,10 +16,15 @@
   --ground: #0d0c0a;
   --rule: #2b2620;
   --ink: #e8e1d2;
-  --muted: #7d7566;
+  /* was #7d7566 (4.29:1) — one of two contrast misses caught by re-running
+     the full pairing sweep after the light-theme rework prompted a second
+     look. Below AA and never actually checked until now. */
+  --muted: #847c6d;
   --accent: #f28c28;
   --accent-fg: #1a1006;
-  --control-border: #5f5443;
+  /* was #5f5443 (2.64:1) — a transcription slip against my own tuning table,
+     which had already found #6a5e4a (3.08:1) as the value that cleared 3:1. */
+  --control-border: #6a5e4a;
   --control-ink: #a49a88;
   /* accent blended ~40% into the ground: marks "today" and the selected
      control without competing with the solid accent used for a picked day */
