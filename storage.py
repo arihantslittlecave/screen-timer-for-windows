@@ -41,6 +41,9 @@ IGNORED_PROCESSES = frozenset(
         "screenclippinghost.exe",
         "textinputhost.exe",
         "applicationframehost.exe",
+        # Checking your screen time is not screen time worth reporting, and
+        # counting it puts this app in its own top-apps list.
+        "screentimer.exe",
     }
 )
 
