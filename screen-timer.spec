@@ -92,6 +92,9 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     icon='assets/icon.ico',
+    # Gives Windows a friendly name for the app. Without it, Task Manager,
+    # Startup apps and the tray icon settings all show "ScreenTimer.exe".
+    version='version_info.txt',
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
