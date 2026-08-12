@@ -553,8 +553,13 @@ section > .label {
   background: transparent;
   color: var(--control-ink);
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  /* Was 18px around a 13px glyph — read as an afterthought next to the 12px
+     app name. Sized up so the icon itself is close to the row's own icon
+     size (16px), with the button box padded a couple px beyond that for a
+     comfortable click target without changing the row's height. */
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
   display: flex;
   align-items: center;
   justify-content: center;

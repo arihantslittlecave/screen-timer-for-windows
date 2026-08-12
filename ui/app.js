@@ -6,7 +6,7 @@ const LIMIT_MAX_HOURS = 23; // pairs with 5-minute steps up to :55, so max is 23
 const GOAL_HOUR_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1); // 1h..16h
 
 const ICONS = {
-  limit: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg>',
+  limit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg>',
 };
 
 function applyTheme(theme) {
