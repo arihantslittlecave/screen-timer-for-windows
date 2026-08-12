@@ -13,7 +13,9 @@ import pystray
 import webview
 import win32api
 import win32con
+import win32event
 import win32gui
+import winerror
 from winrt.windows.data.xml.dom import XmlDocument
 from winrt.windows.ui.notifications import ToastNotification, ToastNotificationManager
 
@@ -25,7 +27,7 @@ import storage
 from active_window import get_active_process
 from api import Api, log_info
 from idle import get_idle_seconds
-from paths import resource_path, user_data_path
+from paths import resource_path
 
 IDLE_THRESHOLD_SECONDS = 60
 TICK_INTERVAL_SECONDS = 1
@@ -37,7 +39,7 @@ APP_NAME = "Screen Timer for Windows"
 # The window title doubles as the handle _focus_existing_instance() looks up
 # with FindWindow, so both sides must read it from here.
 WINDOW_TITLE = APP_NAME
-LOCK_FILE = user_data_path("screen-timer.lock")
+SINGLE_INSTANCE_MUTEX_NAME = "ScreenTimer.SingleInstanceMutex"
 
 # Notifications go through the real WinRT ToastNotificationManager, not
 # plyer — plyer's Windows backend uses the legacy Shell_NotifyIconW balloon
@@ -108,21 +110,34 @@ def _focus_existing_instance():
     win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
 
 
-def _acquire_single_instance_lock():
-    """Returns True if this process now owns the lock. A stale lock (left
-    behind by a crash or kill -9) is detected via pid_exists and reclaimed."""
-    if os.path.exists(LOCK_FILE):
-        try:
-            with open(LOCK_FILE, "r") as f:
-                old_pid = int(f.read().strip())
-        except (ValueError, OSError):
-            old_pid = None
-        if old_pid and old_pid != os.getpid() and psutil.pid_exists(old_pid):
-            return False
+_instance_mutex = None  # module-level so the handle survives for the process's
+# life; a mutex releases the instant its last handle closes, so letting this
+# get garbage collected would silently drop the lock while still running
 
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-    return True
+
+def _acquire_single_instance_lock():
+    """Returns True if this process now owns the lock.
+
+    A named Windows mutex, not a PID written to a file. The previous version
+    compared a stored PID against psutil.pid_exists(), which has a real gap:
+    Windows recycles PIDs, so a lock file left by a long-dead process can
+    coincidentally match a PID now in use by something else and look "alive"
+    forever, or the reverse — a genuinely running instance's lock can be
+    misread as stale and a second full instance is allowed to start. That
+    second case happened in practice: two trackers ended up running at once,
+    each independently read-modify-writing data.json on its own timer, racing
+    on the same file with no coordination between them.
+
+    A mutex has no such gap. The OS releases it the instant the owning
+    process exits for any reason, including a crash or a forced kill, so
+    there is never stale state on disk to reconcile and never a window for a
+    coincidental PID match. CreateMutex is also atomic: "does this exist" and
+    "claim it" happen as one OS call, not two Python statements a second
+    process could interleave with.
+    """
+    global _instance_mutex
+    _instance_mutex = win32event.CreateMutex(None, False, SINGLE_INSTANCE_MUTEX_NAME)
+    return win32api.GetLastError() != winerror.ERROR_ALREADY_EXISTS
 
 
 def _register_app_identity():
@@ -151,10 +166,8 @@ def on_open(icon_obj, item):
 def on_quit(icon_obj, item):
     icon_obj.stop()
     window.destroy()
-    try:
-        os.remove(LOCK_FILE)
-    except OSError:
-        pass
+    # No lock file to clean up: the mutex releases itself when this process
+    # exits, which is the whole point of using one.
 
 
 def build_menu():
