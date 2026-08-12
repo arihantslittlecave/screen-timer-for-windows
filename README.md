@@ -146,8 +146,8 @@ how to verify that yourself.
 
 ## What's actually inside
 
-Fair enough if you'd like to check before running a download. Here's everything,
-about 1,300 lines in total.
+Fair enough if you'd like to check before running a download. Here's everything:
+about 1,200 lines of Python, plus roughly the same again for the window itself.
 
 **The two folders**
 
