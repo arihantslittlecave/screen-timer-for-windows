@@ -93,6 +93,7 @@ window = None
 _limit_notified_day = None
 _limit_notified_apps = set()
 _daily_limit_notified_day = None
+_last_tick_error_at = 0.0
 
 
 def _focus_existing_instance():
@@ -296,7 +297,16 @@ def tracking_loop():
                     f"You've been active for {break_interval_seconds // 60} minutes. Stretch, look away, hydrate.",
                 )
         except Exception:
-            pass
+            # Swallowing this silently meant a fault that recurs every tick
+            # stopped tracking forever while the window and tray icon carried
+            # on looking perfectly healthy, with nothing on disk to say why.
+            # Logged once, then at most every 10 minutes, so a persistent
+            # fault is visible without filling the log with a line a second.
+            global _last_tick_error_at
+            now = time.time()
+            if now - _last_tick_error_at > 600:
+                _last_tick_error_at = now
+                log_info("tracking-error", traceback.format_exc())
 
 
 def main():
@@ -306,18 +316,30 @@ def main():
         _focus_existing_instance()
         sys.exit(0)
 
+    # Logged here rather than at the end of startup. An instance once came up
+    # after a reboot, took the lock, and then wedged before it reached the old
+    # log call, so the log held nothing at all for that launch and there was no
+    # way to tell how far it had got. Writing this first means the next launch
+    # is on record even if everything after it hangs.
+    start_hidden = autostart.STARTUP_FLAG in sys.argv[1:]
+    log_info("startup", f"frozen={getattr(sys, 'frozen', False)} hidden={start_hidden}")
+
     _register_app_identity()
     first_run.run(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
     autostart.refresh_path_if_enabled()
+    # psutil has to open every process to read its exe path, which right after
+    # a cold boot can be slow while the disk and antivirus are busy. Bracketed
+    # by log lines so a stall here is obvious in the log instead of looking
+    # like the app never started.
+    log_info("startup", "scanning running apps for icons")
     backfill_app_paths()
+    log_info("startup", "app scan done, creating window")
 
-    # Launched by Windows at login, this should come up quietly in the tray.
-    # Launched by hand, it must show its window: double-clicking an app and
-    # getting no visible response reads as "it didn't work", especially since
-    # Windows 11 files new tray icons into the overflow flyout where they go
-    # unnoticed. autostart passes STARTUP_FLAG for the login case.
-    start_hidden = autostart.STARTUP_FLAG in sys.argv[1:]
-
+    # start_hidden is read at the top of main(), before the startup log:
+    # launched by Windows at login this comes up quietly in the tray, launched
+    # by hand it must show its window, since double-clicking an app and getting
+    # no visible response reads as "it didn't work". Windows 11 also files new
+    # tray icons into the overflow flyout where they go unnoticed.
     ui_path = resource_path("ui", "index.html")
     window = webview.create_window(
         WINDOW_TITLE,
@@ -354,10 +376,13 @@ def main():
     threading.Thread(target=tracking_loop, daemon=True).start()
     threading.Thread(target=run_tray, daemon=True).start()
 
+    # The last line before the UI takes over the main thread. A log that ends
+    # at an earlier checkpoint says the app hung during startup and points at
+    # which step; a log with this line says startup completed and anything
+    # wrong afterwards is the running app, not its launch.
     log_info(
-        "startup",
-        f"frozen={getattr(sys, 'frozen', False)} hidden={start_hidden}\n"
-        f"ui_path={ui_path}\nui_exists={os.path.exists(ui_path)}",
+        "ready",
+        f"tracking started, ui_path={ui_path} ui_exists={os.path.exists(ui_path)}",
     )
     webview.start(icon=icon_art.write_ico())
 
