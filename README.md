@@ -48,6 +48,25 @@ You can [see exactly what's in it](#whats-actually-inside), or
 
 </details>
 
+### If it won't open at all
+
+A newer Windows 11 feature called **Smart App Control** blocks unsigned apps
+outright, with no "Run anyway" button. If the app closes instantly, or you get a
+message about Smart App Control blocking it, that's what happened.
+
+To check: open **Windows Security** → **App & browser control** → **Smart App
+Control**.
+
+If it's on, your options are:
+
+- **[Build it yourself](#build-it-yourself)** from the source in this repo. It
+  runs as plain Python and Smart App Control doesn't apply. This is the option
+  I'd suggest.
+- Or turn Smart App Control off. Worth knowing before you do: it's a real
+  security layer, and Windows **cannot turn it back on** afterwards without
+  resetting your PC. I'd rather you built it from source than switched that off
+  for my app.
+
 ### Where to find it once it's running
 
 Look at the **bottom right of your taskbar**, near the clock. There'll be a
@@ -227,6 +246,17 @@ It helps a lot if you include the contents of:
 ```
 
 That's where the app writes down what it was doing when things went wrong.
+
+If that file is missing or empty, the app couldn't write to its own folder, so
+check these two instead:
+
+```
+%APPDATA%\ScreenTimer\boot-trace.log
+%TEMP%\ScreenTimer-fallback.log
+```
+
+Between them they cover the case where the app can't write anywhere it normally
+would, which is exactly the case that used to leave nothing behind to look at.
 
 ---
 

@@ -383,6 +383,16 @@ def tracking_loop():
                         check_daily_limit()
                     except Exception:
                         pass  # notifications are best-effort, never block on them
+                else:
+                    # Nothing pending is not a failure to write, it's an idle
+                    # machine with nothing to write yet. Leaving the clock
+                    # running through an idle stretch meant the first second
+                    # of activity after a two-minute break arrived already
+                    # "overdue" and fired the stall warning instantly —
+                    # observed twice in one evening, both times holding a
+                    # single second. The alert has to measure writes that are
+                    # failing, not time spent with nothing to say.
+                    last_saved_at = time.time()
                 if icon:
                     icon.menu = build_menu()
 
@@ -409,9 +419,23 @@ def tracking_loop():
 def main():
     global icon, window
 
+    # These three lines bracket the one stretch of startup that had no
+    # instrumentation at all, and a launch was once seen to wedge inside
+    # exactly that gap: boot-trace recorded "entering main()", and then
+    # nothing was ever written again — not the startup line below, not a
+    # crash, nothing. Both calls here can plausibly block rather than fail
+    # (a mutex handle, and a foreground-window handoff that waits on another
+    # process's message loop), and a call that blocks leaves no trace at all
+    # unless something was written before it. boot-trace is used rather than
+    # log_info because log_info is itself downstream of a file open that
+    # could be the thing hanging.
+    _boot_trace("main(): claiming single-instance lock")
     if not _acquire_single_instance_lock():
+        _boot_trace("main(): another instance holds the lock, focusing it")
         _focus_existing_instance()
+        _boot_trace("main(): focused existing instance, exiting")
         sys.exit(0)
+    _boot_trace("main(): lock acquired, writing first log line")
 
     # Logged here rather than at the end of startup. An instance once came up
     # after a reboot, took the lock, and then wedged before it reached the old
@@ -420,6 +444,7 @@ def main():
     # is on record even if everything after it hangs.
     start_hidden = autostart.STARTUP_FLAG in sys.argv[1:]
     log_info("startup", f"frozen={getattr(sys, 'frozen', False)} hidden={start_hidden}")
+    _boot_trace("main(): first log line written, startup proceeding")
 
     _register_app_identity()
     first_run.run(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
