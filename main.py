@@ -274,18 +274,29 @@ def tracking_loop():
             if since_save >= SAVE_INTERVAL_SECONDS:
                 since_save = 0
                 if pending:
-                    # Only clear pending after a successful write — if the
-                    # disk write throws, keep accumulating and retry next
-                    # flush rather than silently dropping tracked time.
-                    storage.add_active_seconds(pending)
-                    storage.remember_app_paths(pending_paths)
+                    # If this write throws, pending is left intact and the
+                    # next flush retries with the seconds still accumulated,
+                    # so a file that is briefly unreadable defers the write
+                    # instead of losing time or overwriting history.
+                    flushed = pending
+                    storage.add_active_seconds(flushed)
+
+                    # Cleared the instant the write succeeds. Anything below
+                    # that throws must not leave these seconds pending, or
+                    # the next flush would add them to the total a second
+                    # time on top of the copy already written.
+                    pending = {}
+
                     try:
-                        check_app_limits(pending.keys())
+                        storage.remember_app_paths(pending_paths)
+                        pending_paths = {}
+                    except Exception:
+                        pass  # icon paths are cosmetic, retry on the next flush
+                    try:
+                        check_app_limits(flushed.keys())
                         check_daily_limit()
                     except Exception:
                         pass  # notifications are best-effort, never block on them
-                    pending = {}
-                    pending_paths = {}
                 if icon:
                     icon.menu = build_menu()
 

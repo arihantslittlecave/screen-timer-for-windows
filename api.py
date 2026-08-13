@@ -155,7 +155,10 @@ class Api:
     def save_settings(self, break_minutes, goal_hours):
         # Merge onto the existing settings — overwriting wholesale would
         # silently drop app_limits every time break/goal are changed.
-        settings = storage.load_settings()
+        # Strict read: if the file can't be read right now, fail the save
+        # rather than merge onto defaults and write the user's real goal,
+        # break interval and app limits away.
+        settings = storage.load_settings(default_on_error=False)
         settings["break_interval_minutes"] = int(break_minutes)
         settings["daily_goal_hours"] = float(goal_hours)
         storage.save_settings(settings)

@@ -62,14 +62,38 @@ def _atomic_write_json(path, data):
     os.replace(tmp_path, path)
 
 
-def load_data():
+class StoreUnreadable(Exception):
+    """A stored file exists but could not be read this time.
+
+    Deliberately distinct from "this file is empty or absent". Collapsing the
+    two is what made this dangerous: every store here is read, modified, then
+    written back, so a caller that treats a temporary read failure as an empty
+    file will write back a file containing only the newest entry, destroying
+    everything already in it. A file locked for a moment at boot, which
+    antivirus and Smart App Control both do, was enough to trigger it.
+
+    Read-only callers still get a safe empty default; only the read-modify-
+    write paths ask for the exception, and they retry rather than overwrite.
+    """
+
+
+def load_data(default_on_error=True):
+    """Reads the history file.
+
+    default_on_error=True is for read-only callers, where showing an empty
+    day briefly is harmless and better than an error. Anything that writes
+    back must pass False, so a failed read raises instead of silently looking
+    like an empty history.
+    """
     if not os.path.exists(DATA_FILE):
         return {}
     try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        if default_on_error:
+            return {}
+        raise StoreUnreadable(str(exc)) from exc
 
 
 def save_data(data):
@@ -88,9 +112,16 @@ def _normalize_day(day):
 
 
 def add_active_seconds(process_seconds):
-    """process_seconds: dict of process_name -> seconds to add for today."""
+    """process_seconds: dict of process_name -> seconds to add for today.
+
+    Raises StoreUnreadable rather than writing if the existing history could
+    not be read. The caller retries on the next flush with its pending
+    seconds still accumulated, so nothing is lost by refusing: the write is
+    merely deferred until the file is readable again. Writing regardless
+    would replace the whole history with today alone.
+    """
     today = today_str()
-    data = load_data()
+    data = load_data(default_on_error=False)
     day = _normalize_day(data.get(today, {}))
 
     for process_name, seconds in process_seconds.items():
@@ -149,19 +180,21 @@ def get_today_apps():
     return get_day_apps()
 
 
-def load_app_paths():
+def load_app_paths(default_on_error=True):
     if not os.path.exists(PATHS_FILE):
         return {}
     try:
         with open(PATHS_FILE, "r") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        if default_on_error:
+            return {}
+        raise StoreUnreadable(str(exc)) from exc
 
 
 def remember_app_paths(new_paths):
     """Merges process_name -> exe_path entries, writing only when something changed."""
-    known = load_app_paths()
+    known = load_app_paths(default_on_error=False)
     additions = {name: path for name, path in new_paths.items() if name not in known}
     if not additions:
         return
@@ -213,7 +246,10 @@ def format_hms(total_seconds):
     return f"{minutes}m"
 
 
-def load_settings():
+def load_settings(default_on_error=True):
+    """default_on_error=False for callers that write settings back, so a
+    failed read cannot silently reset the user's goal, break interval and
+    per-app limits to defaults."""
     if not os.path.exists(SETTINGS_FILE):
         return dict(DEFAULT_SETTINGS)
     try:
@@ -222,8 +258,10 @@ def load_settings():
         merged = dict(DEFAULT_SETTINGS)
         merged.update(settings)
         return merged
-    except (json.JSONDecodeError, OSError):
-        return dict(DEFAULT_SETTINGS)
+    except (json.JSONDecodeError, OSError) as exc:
+        if default_on_error:
+            return dict(DEFAULT_SETTINGS)
+        raise StoreUnreadable(str(exc)) from exc
 
 
 def save_settings(settings):
@@ -232,7 +270,7 @@ def save_settings(settings):
 
 def set_app_limit(process_name, minutes):
     """minutes=None clears the limit for that app."""
-    settings = load_settings()
+    settings = load_settings(default_on_error=False)
     limits = dict(settings.get("app_limits", {}))
     if minutes is None:
         limits.pop(process_name, None)
