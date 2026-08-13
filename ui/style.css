@@ -111,28 +111,23 @@ body {
   margin: 0 auto;
 }
 
-.titlebar {
+/* The strip that used to sit above the timer is gone. It spent a whole row
+   of a 370px-tall window on a "tracking" label, which only ever said the
+   same thing, next to a theme toggle. The toggle now sits with the other
+   controls under the total, and the window starts straight at the number
+   people opened it to read. */
+.today-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--rule);
-  flex-shrink: 0;
-  transition: border-color 0.2s ease;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-/* No app name here: the OS title bar directly above already shows it next to
-   the icon, and repeating it burned a line of a 370px-tall window to say the
-   same thing twice. This row carries the one thing the title bar can't —
-   whether tracking is actually live. */
-.titlebar .status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+/* Keeps the toggle on the right even when back-to-today is hidden, which is
+   most of the time, since a lone flex item would otherwise sit left. */
+.today-actions .theme-toggle {
+  margin-left: auto;
 }
 
 .dot {
@@ -232,9 +227,7 @@ section > .label {
   color: var(--accent);
 }
 
-#back-to-today {
-  margin-top: 10px;
-}
+/* Spacing now comes from .today-actions, which owns the row this sits in. */
 
 /* ---- today: dial + total ---- */
 .today {

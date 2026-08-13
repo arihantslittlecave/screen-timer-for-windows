@@ -1,13 +1,17 @@
 import json
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from paths import user_data_path
 
 DATA_FILE = user_data_path("data.json")
 SETTINGS_FILE = user_data_path("settings.json")
 PATHS_FILE = user_data_path("app_paths.json")
+
+# How far ahead of the system clock a recorded day may be before it is treated
+# as a bad date rather than as evidence the clock is wrong. See today_str().
+MAX_CLOCK_SLIP_DAYS = 2
 
 DEFAULT_SETTINGS = {
     "break_interval_minutes": 30,
@@ -62,6 +66,20 @@ def _atomic_write_json(path, data):
     os.replace(tmp_path, path)
 
 
+def _quarantine_corrupt_file(path):
+    """Renames a corrupt store aside so a fresh one can take its place.
+
+    Never deletes: the file is the user's history, and a copy that cannot be
+    parsed automatically may still be readable by hand. Best-effort, since
+    failing to rename must not stop the app from carrying on.
+    """
+    try:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        os.replace(path, f"{path}.corrupt-{stamp}")
+    except OSError:
+        pass
+
+
 class StoreUnreadable(Exception):
     """A stored file exists but could not be read this time.
 
@@ -90,10 +108,20 @@ def load_data(default_on_error=True):
     try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
+    except OSError as exc:
+        # Locked, busy, permission denied: transient by nature, so the caller
+        # should back off and retry rather than act on a wrong answer.
         if default_on_error:
             return {}
         raise StoreUnreadable(str(exc)) from exc
+    except json.JSONDecodeError:
+        # Corrupt is a different problem entirely: unlike a locked file it
+        # will never become readable on its own, so refusing to write would
+        # block tracking permanently instead of for a few seconds. Move the
+        # bad file aside and start a fresh one. Renamed rather than deleted
+        # so the damaged history is still there to inspect or salvage.
+        _quarantine_corrupt_file(DATA_FILE)
+        return {}
 
 
 def save_data(data):
@@ -155,11 +183,24 @@ def today_str():
         existing = load_data()
     except Exception:
         return computed
-    if existing:
-        latest = max(existing)
-        if computed < latest:
-            return latest
-    return computed
+    if not existing:
+        return computed
+
+    latest = max(existing)
+    if computed >= latest:
+        return computed
+
+    # Only tolerate a small discrepancy. The boot glitch this defends against
+    # is a few hours, so a stored day more than a couple of days ahead is not
+    # a clock blip, it is a bad date that got written (a clock can jump
+    # forward too). Trusting it unconditionally would be a trap with no way
+    # out: one bogus future entry would pin every later reading to that date
+    # permanently, even once the clock was correct again.
+    try:
+        gap = (date.fromisoformat(latest) - date.fromisoformat(computed)).days
+    except ValueError:
+        return computed
+    return latest if gap <= MAX_CLOCK_SLIP_DAYS else computed
 
 
 def get_day_total_seconds(day_str=None):
