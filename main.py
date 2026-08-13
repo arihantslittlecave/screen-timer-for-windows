@@ -77,6 +77,10 @@ _boot_trace("all imports done, entering main()")
 IDLE_THRESHOLD_SECONDS = 60
 TICK_INTERVAL_SECONDS = 1
 SAVE_INTERVAL_SECONDS = 10
+# How long writes may keep failing before the app says so out loud. Long
+# enough that a brief lock at boot passes unremarked, short enough that a
+# genuinely stuck app is reported while the user is still at the machine.
+STALL_ALERT_SECONDS = 120
 TRAY_ICON_SIZE = 24  # under icon_art.TRACK_MIN_SIZE, so pystray gets the
 # already-simplified arc-only variant directly rather than a detailed 64px
 # image that Windows would then have to shrink itself for the actual tray slot
@@ -298,9 +302,36 @@ def tracking_loop():
     pending = {}
     pending_paths = {}
     since_save = 0
+    last_saved_at = time.time()
+    stall_reported = False
 
     while True:
         time.sleep(TICK_INTERVAL_SECONDS)
+
+        # Deferring a write is normal and self-healing: a file locked for a
+        # few seconds at boot gets retried on the next flush. Deferring for
+        # minutes is not, and is exactly the state this app used to sit in
+        # while looking perfectly healthy — tray icon fine, window fine,
+        # counting nothing, and no clue on disk as to why. Say so, once,
+        # rather than let it pass for normal.
+        if pending and time.time() - last_saved_at > STALL_ALERT_SECONDS:
+            if not stall_reported:
+                stall_reported = True
+                held = sum(pending.values())
+                log_info(
+                    "stalled",
+                    f"no successful save for "
+                    f"{int(time.time() - last_saved_at)}s, holding {held}s of "
+                    f"unwritten time. the data folder is most likely locked.",
+                )
+                try:
+                    _notify(
+                        "Screen Timer can't save right now",
+                        "Something is blocking its data folder. Time is still "
+                        "being counted and will be written once that clears.",
+                    )
+                except Exception:
+                    pass
 
         # A single bad tick (a psutil hiccup, a locked settings file, a
         # notification backend failure) must never kill this thread — it's
@@ -331,6 +362,16 @@ def tracking_loop():
                     # the next flush would add them to the total a second
                     # time on top of the copy already written.
                     pending = {}
+
+                    if stall_reported:
+                        log_info(
+                            "recovered",
+                            f"writing again after "
+                            f"{int(time.time() - last_saved_at)}s stalled, "
+                            f"nothing lost.",
+                        )
+                    last_saved_at = time.time()
+                    stall_reported = False
 
                     try:
                         storage.remember_app_paths(pending_paths)

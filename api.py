@@ -1,4 +1,6 @@
 import functools
+import os
+import tempfile
 import threading
 import traceback
 from datetime import datetime
@@ -50,12 +52,31 @@ def log_exception(label, text):
     # mid-line and shred each other's entries, which was actually observed.
     # One write, under one lock.
     entry = f"--- {datetime.now().isoformat(timespec='seconds')} {label}\n{text.rstrip()}\n"
+    with _log_lock:
+        if _append(user_data_path("screen-timer.log"), entry):
+            return
+        # The primary log lives in the same folder as the data files, so
+        # whatever stops one write tends to stop them all: a folder locked by
+        # antivirus at boot silences the log and freezes tracking together,
+        # and the silence then hides its own cause. This second location is
+        # somewhere else entirely, so a lock on the app's own folder cannot
+        # suppress the record of that lock.
+        _append(_fallback_log_path(), f"[primary log unwritable]\n{entry}")
+
+
+def _append(path, text):
+    """Returns True if the line landed. Never raises: logging must not be the
+    thing that breaks the app."""
     try:
-        with _log_lock:
-            with open(user_data_path("screen-timer.log"), "a", encoding="utf8") as f:
-                f.write(entry)
+        with open(path, "a", encoding="utf8") as f:
+            f.write(text)
+        return True
     except OSError:
-        pass  # logging must never be the thing that breaks the app
+        return False
+
+
+def _fallback_log_path():
+    return os.path.join(tempfile.gettempdir(), "ScreenTimer-fallback.log")
 
 
 def _logged(fn):
