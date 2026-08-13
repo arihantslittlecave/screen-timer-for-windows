@@ -89,7 +89,7 @@ def _normalize_day(day):
 
 def add_active_seconds(process_seconds):
     """process_seconds: dict of process_name -> seconds to add for today."""
-    today = str(date.today())
+    today = today_str()
     data = load_data()
     day = _normalize_day(data.get(today, {}))
 
@@ -102,7 +102,33 @@ def add_active_seconds(process_seconds):
 
 
 def today_str():
-    return str(date.today())
+    """The current date, guarded against a real clock quirk seen on at least
+    one machine this ran on: this app's autostart fires right at boot, and on
+    that machine the system clock reliably read several hours behind reality
+    for a moment right then, every single morning, before an RTC sync
+    corrected it seconds later (confirmed via Windows' own System event log,
+    which recorded the exact jump each time). Caught in that window,
+    date.today() would report a day that has already been fully recorded as
+    "today", and anything tracked in that moment would file itself under an
+    already-completed day.
+
+    A real clock only ever moves forward, so if the computed date is earlier
+    than the most recent day already on record, that is proof of a bad
+    reading rather than proof time went backwards. Falling back to that
+    latest recorded day keeps tracking pointed at the right place; the
+    problem is self-correcting; the next call after the RTC sync lands will
+    see the true date again on its own.
+    """
+    computed = str(date.today())
+    try:
+        existing = load_data()
+    except Exception:
+        return computed
+    if existing:
+        latest = max(existing)
+        if computed < latest:
+            return latest
+    return computed
 
 
 def get_day_total_seconds(day_str=None):
