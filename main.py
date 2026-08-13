@@ -1,6 +1,36 @@
-import ctypes
 import os
 import sys
+
+from paths import user_data_path
+
+
+def _boot_trace(label):
+    """Writes one line with nothing but stdlib, before anything that could
+    plausibly hang has been imported yet.
+
+    Every log line elsewhere in this app goes through api.log_info, which
+    needs win32api, winrt and webview already imported successfully. That is
+    fine once startup is past this point, but it means an import itself
+    hanging, which is exactly the kind of thing antivirus or Smart App
+    Control scanning a freshly-launched exe at boot can cause, would leave
+    nothing in the log at all: the code that would explain the silence is
+    the same code that never got to run. This writes straight to disk with
+    only `os`, bracketing each import below so a boot that goes silent still
+    leaves a trail of exactly how far it got.
+    """
+    try:
+        path = user_data_path("boot-trace.log")
+        with open(path, "a", encoding="utf8") as f:
+            import time as _t
+
+            f.write(f"{_t.strftime('%Y-%m-%dT%H:%M:%S')}  pid={os.getpid()}  {label}\n")
+    except OSError:
+        pass
+
+
+_boot_trace("process started, importing stdlib")
+
+import ctypes
 import threading
 import time
 import traceback
@@ -8,16 +38,29 @@ import winreg
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
+_boot_trace("stdlib done, importing psutil/pystray")
+
 import psutil
 import pystray
-import webview
+
+_boot_trace("psutil/pystray done, importing pywin32")
+
 import win32api
 import win32con
 import win32event
 import win32gui
 import winerror
+
+_boot_trace("pywin32 done, importing winrt (toast notifications)")
+
 from winrt.windows.data.xml.dom import XmlDocument
 from winrt.windows.ui.notifications import ToastNotification, ToastNotificationManager
+
+_boot_trace("winrt done, importing webview (WebView2 bridge)")
+
+import webview
+
+_boot_trace("webview done, importing this app's own modules")
 
 import autostart
 import first_run
@@ -28,6 +71,8 @@ from active_window import get_active_process
 from api import Api, log_info
 from idle import get_idle_seconds
 from paths import resource_path
+
+_boot_trace("all imports done, entering main()")
 
 IDLE_THRESHOLD_SECONDS = 60
 TICK_INTERVAL_SECONDS = 1
