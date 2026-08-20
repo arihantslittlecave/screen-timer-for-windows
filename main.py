@@ -104,6 +104,7 @@ SINGLE_INSTANCE_MUTEX_NAME = "ScreenTimer.SingleInstanceMutex"
 # compiled WinRT bindings. Importing just these two winrt submodules gets
 # the same result from ~1.5MB of actually-used binaries.
 APP_USER_MODEL_ID = "ScreenTimer.DesktopApp"
+_icon_path = None  # the .ico on disk, shared by the toast and the window icon
 _icon_uri = None  # set once in _register_app_identity(); regenerating the
 # multi-size .ico on every single notification would be wasteful
 
@@ -196,17 +197,61 @@ def _register_app_identity():
     falling back to python.exe's identity. Must run before any window is
     created — SetCurrentProcessExplicitAppUserModelID only works pre-window
     and only once per process."""
-    global _icon_uri
+    global _icon_uri, _icon_path
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
 
     icon_path = icon_art.write_ico()
+    _icon_path = icon_path
     _icon_uri = "file:///" + Path(icon_path).resolve().as_posix()
 
     key_path = f"Software\\Classes\\AppUserModelId\\{APP_USER_MODEL_ID}"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
         winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
         winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, icon_path)
+
+
+# wParam values for WM_SETICON. Not in win32con, so named here rather than
+# left as bare 0 and 1 at the call site.
+_ICON_SMALL = 0
+_ICON_BIG = 1
+
+
+def _apply_window_icon():
+    """Gives the window its own icon, which is what the taskbar and Alt-Tab show.
+
+    Frozen, the exe's embedded icon covers this for nothing. Run from source
+    the host process is pythonw.exe, so Windows falls back to Python's icon and
+    the app sits in the taskbar looking like something else entirely.
+    pywebview's start(icon=...) does not reach the Windows backend, so the icon
+    is set on the window handle directly.
+
+    Polls because create_window() returns before the native window exists, and
+    gives up quietly: a missing icon is a cosmetic problem and must never be
+    the reason startup fails.
+    """
+    if not _icon_path or not os.path.exists(_icon_path):
+        return
+
+    hwnd = None
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        hwnd = win32gui.FindWindow(None, WINDOW_TITLE)
+        if hwnd:
+            break
+        time.sleep(0.25)
+    if not hwnd:
+        return
+
+    try:
+        for size, which in ((16, _ICON_SMALL), (32, _ICON_BIG)):
+            handle = win32gui.LoadImage(
+                0, _icon_path, win32con.IMAGE_ICON, size, size, win32con.LR_LOADFROMFILE
+            )
+            win32gui.SendMessage(hwnd, win32con.WM_SETICON, which, handle)
+        log_info("window-icon", "set from " + _icon_path)
+    except Exception:
+        log_info("window-icon-failed", traceback.format_exc())
 
 
 def on_open(icon_obj, item):
@@ -497,6 +542,7 @@ def main():
 
     threading.Thread(target=tracking_loop, daemon=True).start()
     threading.Thread(target=run_tray, daemon=True).start()
+    threading.Thread(target=_apply_window_icon, daemon=True).start()
 
     # The last line before the UI takes over the main thread. A log that ends
     # at an earlier checkpoint says the app hung during startup and points at
