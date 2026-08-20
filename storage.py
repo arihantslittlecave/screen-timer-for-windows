@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import time
 import re
 from datetime import date, datetime, timedelta
 
@@ -57,13 +59,52 @@ def is_ignored_process(process_name):
 
 
 def _atomic_write_json(path, data):
-    """Writes to a temp file then renames over the target. os.replace is
-    atomic on Windows/NTFS, so a crash or power loss mid-write leaves either
-    the old file or the new one intact — never a truncated, corrupted one."""
+    """Writes to a temp file, forces it to disk, then renames over the target.
+
+    os.replace is atomic, but that alone only guarantees the *rename* is
+    all-or-nothing — not that the bytes ever reached the platter. Without the
+    fsync below, NTFS can commit the rename and the new file's length while
+    the contents are still in the write-back cache, so an unclean shutdown
+    leaves a file of exactly the right size full of zeros. That is not
+    hypothetical: it happened here on 2026-08-19, and the history came back
+    as 3379 NUL bytes.
+
+    The previous copy is kept alongside as .bak before the rename, so a file
+    that does come back unreadable has somewhere to be recovered from instead
+    of the app starting over from an empty history.
+    """
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
-    os.replace(tmp_path, path)
+        f.flush()
+        os.fsync(f.fileno())
+
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, f"{path}.bak")
+        except OSError:
+            pass  # a missing backup must never stop the actual write
+
+    _replace_with_retry(tmp_path, path)
+
+
+# Long enough to outlast an antivirus or indexer holding the file open for a
+# moment, short enough that the tracking loop's own 10-second flush interval
+# still governs. Seen in the wild as PermissionError/WinError 5 out of
+# os.replace, which stalled writes for over an hour before it cleared.
+_REPLACE_ATTEMPTS = 5
+_REPLACE_BACKOFF_SECONDS = 0.2
+
+
+def _replace_with_retry(src, dst):
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_BACKOFF_SECONDS * (attempt + 1))
 
 
 def _quarantine_corrupt_file(path):
@@ -78,6 +119,36 @@ def _quarantine_corrupt_file(path):
         os.replace(path, f"{path}.corrupt-{stamp}")
     except OSError:
         pass
+
+
+def _recover_from_backup(path):
+    """Last copy that was known to parse, or {} if there isn't one.
+
+    Quarantining a corrupt file used to mean starting from nothing, which on
+    2026-08-19 turned one unclean shutdown into ten days of history apparently
+    vanishing — the file was zeroed by the crash, and the app dutifully began
+    a fresh one. The .bak written before every replace is at most one save
+    behind (ten seconds of tracking), so recovering from it costs almost
+    nothing and saves everything.
+
+    Returns {} rather than raising if the backup is missing or is itself
+    unreadable: by this point the primary is already gone, and refusing to
+    start would leave the user with an app that will not track at all.
+    """
+    backup = f"{path}.bak"
+    try:
+        with open(backup, "r") as f:
+            recovered = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    # Put it back as the live file, so the next write extends the recovered
+    # history rather than overwriting it with today alone.
+    try:
+        _atomic_write_json(path, recovered)
+    except OSError:
+        pass  # still return it: tracking can continue in memory either way
+    return recovered
 
 
 class StoreUnreadable(Exception):
@@ -121,7 +192,7 @@ def load_data(default_on_error=True):
         # bad file aside and start a fresh one. Renamed rather than deleted
         # so the damaged history is still there to inspect or salvage.
         _quarantine_corrupt_file(DATA_FILE)
-        return {}
+        return _recover_from_backup(DATA_FILE)
 
 
 def save_data(data):
