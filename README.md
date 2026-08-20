@@ -210,6 +210,39 @@ so there's no browser bundled inside it either.
 
 ---
 
+## What happens when things go wrong
+
+A tracker is only worth having if a year of history is still there in a year, so
+the failure cases got more attention than the happy path.
+
+**Your history survives a crash.** Days are written to a temp file, forced to
+disk, and then renamed into place. The rename is the atomic part, but forcing
+the write first is what matters: without it Windows can record the new file's
+length while its contents are still in a cache, and a power cut then leaves a
+file of the right size full of zeros. That is not a theory — it happened during
+development, and the fix is the reason it cannot cost you a day again.
+
+**A damaged file is never silently replaced.** The previous copy is kept
+alongside the live one, so a file that comes back unreadable is recovered from
+it rather than quietly starting your history over. The damaged copy is renamed,
+never deleted, in case it can still be salvaged by hand.
+
+**A locked file defers, it does not lose.** Antivirus and search indexers grab
+files at random moments. A write that fails is retried, and the seconds it was
+carrying stay pending until one succeeds, so a busy minute costs nothing. If
+writes keep failing for two minutes the app says so, rather than sitting there
+looking healthy and counting nothing.
+
+**Only one copy ever runs.** Start it twice and the second one brings the first
+window forward instead of launching a second tracker, because two trackers
+writing the same file independently is how days get double-counted.
+
+**A launch that goes wrong leaves a trail.** Startup writes a checkpoint at each
+step, using nothing but the standard library, so a failure during startup can be
+placed exactly rather than leaving an empty log and no explanation.
+
+---
+
 ## Build it yourself
 
 You'll need Python 3.11 or newer on Windows.
