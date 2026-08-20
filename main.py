@@ -492,7 +492,13 @@ def main():
     _boot_trace("main(): first log line written, startup proceeding")
 
     _register_app_identity()
-    first_run.run(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+    # sys.executable in both cases, never __file__. Windows records tray icons
+    # against the running process's image path, which is this exe when frozen
+    # and pythonw.exe when run from source — never main.py. Passing the script
+    # path meant the lookup that pins the icon to the taskbar corner matched
+    # nothing and quietly did nothing, so the icon stayed buried in the hidden
+    # overflow flyout with no indication why.
+    first_run.run(sys.executable)
     autostart.refresh_path_if_enabled()
     # psutil has to open every process to read its exe path, which right after
     # a cold boot can be slow while the disk and antivirus are busy. Bracketed
