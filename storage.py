@@ -305,12 +305,22 @@ def load_app_paths(default_on_error=True):
 
 
 def remember_app_paths(new_paths):
-    """Merges process_name -> exe_path entries, writing only when something changed."""
+    """Merges process_name -> exe_path entries, writing only when something changed.
+
+    Entries are refreshed, not just added. Recording a path once and never
+    revisiting it looks harmless until an app updates: Store apps and Electron
+    apps both carry their version in the install path, so
+    Claude_1.26832.0.0_x64 becomes Claude_1.32885.1.0_x64 overnight and the
+    stored path points at a folder that no longer exists. Icon extraction then
+    fails forever and the app quietly falls back to a letter tile, with nothing
+    to suggest the path is simply stale. Observed paths come from the running
+    process, so the newest one seen is always the correct one.
+    """
     known = load_app_paths(default_on_error=False)
-    additions = {name: path for name, path in new_paths.items() if name not in known}
-    if not additions:
+    changed = {name: path for name, path in new_paths.items() if known.get(name) != path}
+    if not changed:
         return
-    known.update(additions)
+    known.update(changed)
     _atomic_write_json(PATHS_FILE, known)
 
 
