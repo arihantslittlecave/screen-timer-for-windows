@@ -185,7 +185,6 @@ class Api:
         total = sum(d["seconds"] for d in days)
         active = [d for d in days if d["seconds"] > 0]
         avg_seconds = total // len(active) if active else 0
-        busiest = max(active, key=lambda d: d["seconds"]) if active else None
 
         settings = storage.load_settings()
         app_limits = settings.get("app_limits", {})
@@ -212,16 +211,6 @@ class Api:
             "avgSeconds": avg_seconds,
             "avgLabel": storage.format_hms(avg_seconds),
             "activeDays": len(active),
-            "busiestDay": (
-                {
-                    "date": busiest["date"],
-                    "dayNum": busiest["dayNum"],
-                    "seconds": busiest["seconds"],
-                    "label": busiest["label"],
-                }
-                if busiest
-                else None
-            ),
             "days": days,
             "selectedDay": selected_day,
             "selected": selected,

@@ -429,17 +429,19 @@ def can_go_next_month(year, month):
 
 
 def get_month_days(year, month):
-    """One entry per day of the month, oldest first.
+    """One entry per day of the month, oldest first — always the FULL
+    calendar month (28-31 entries), never truncated.
 
-    Days after today are omitted rather than shown empty, on the same logic
-    as can_go_next_month: a bar for a day that hasn't happened yet isn't a
-    zero, it's a question that hasn't been asked.
+    Truncating the current month at today used to mean August showed 31 cells
+    and September showed 19, with nothing to explain why the grid was a
+    different shape from one month to the next. A real calendar doesn't
+    truncate either: it shows the whole month and leaves the future blank.
+    isFuture marks those cells so the UI can render them empty and
+    unclickable without needing to guess "today" itself client-side.
     """
     data = load_data()
     first, last = _month_bounds(year, month)
     today = date.today()
-    if last > today:
-        last = today if (year, month) == (today.year, today.month) else first - timedelta(days=1)
 
     days = []
     d = first
@@ -454,6 +456,7 @@ def get_month_days(year, month):
                 "seconds": day.get("total", 0),
                 "label": format_hms(day.get("total", 0)),
                 "isToday": key == str(today),
+                "isFuture": d > today,
             }
         )
         d += timedelta(days=1)
