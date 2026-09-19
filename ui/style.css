@@ -1,82 +1,43 @@
-/* Two themes, one shape. Dark is the brand orange (#f28c28) on near-black — the
-   "amber terminal" reference point. Light is NOT the same palette inverted; see
-   the note on its --accent below.
-
-   Token roles, because several look similar and are not interchangeable:
-     --rule            hairline dividers only. Deliberately near-invisible;
-                       using it on a control leaves the control with no edge.
-     --control-border  borders of things you can click. Meets 3:1.
-     --control-ink     labels on those controls. Near-ink, because --muted
-                       misses 4.5:1 at 10.5px on the light ground.
-     --accent          the single accent, for fills AND text in both themes.
-     --accent-dim      accent blended toward the ground. Marks "today" and the
-                       selected control, so neither competes with the solid
-                       accent that means "picked day". */
-[data-theme="dark"] {
+/* Single premium dark theme. There is no light variant and no toggle — the
+   two-theme system this used to have was removed on request; every token
+   below is the dark palette, already checked against WCAG AA (4.5:1 text,
+   3:1 control borders) and re-checked here against the elevated card surface,
+   which is measurably lighter than the page and would otherwise quietly fail
+   contrast that passed on the page alone. */
+:root {
   --ground: #0d0c0a;
+  --surface: #16140f;
+  --surface-raised: #1c1912;
   --rule: #2b2620;
-  --ink: #e8e1d2;
-  /* was #7d7566 (4.29:1) — one of two contrast misses caught by re-running
-     the full pairing sweep after the light-theme rework prompted a second
-     look. Below AA and never actually checked until now. */
-  --muted: #847c6d;
+  --ink: #f2ede2;
+  --muted: #8a8273;
   --accent: #f28c28;
   --accent-fg: #1a1006;
-  /* was #5f5443 (2.64:1) — a transcription slip against my own tuning table,
-     which had already found #6a5e4a (3.08:1) as the value that cleared 3:1. */
-  --control-border: #6a5e4a;
-  --control-ink: #a49a88;
-  /* accent blended ~40% into the ground: marks "today" and the selected
-     control without competing with the solid accent used for a picked day */
-  --accent-dim: #693f16;
-}
-
-/* Light was a uniformly warm beige, which left the orange competing with its
-   own background and everything looking slightly muddy. Ground is now a near
-   white and the greys are neutral, so the accent is the only warm thing on the
-   page and reads as signal. Every pair below is checked against WCAG AA:
-   4.5:1 for text, 3:1 for control borders. */
-[data-theme="light"] {
-  --ground: #fbfaf7;
-  --rule: #e4e0d8;
-  --ink: #171614;
-  --muted: #63605a;
-  /* Deeper and more saturated than the dark theme's orange, on purpose. Orange
-     is mid-luminance: against near-black it is far brighter than its ground
-     (~8:1) and glows, but against near-white the same colour is only ~3.8:1
-     darker and reads washed out. This one gets to 5.3:1 while keeping
-     saturation at 0.98, so it still looks orange rather than brown, and it
-     clears 4.5:1 — which lets fills and text share a single accent token. */
-  --accent: #a35304;
-  /* Light, not dark: on an accent this deep, white text measures 5.14:1
-     against 3.39:1. The opposite was true of the lighter orange. */
-  --accent-fg: #fbf6ee;
-  --control-border: #928d86;
-  --control-ink: #383632;
-  --accent-dim: #e9ca9c;
+  --accent-dim: #3a2612;
+  /* accent-dim was measured for exactly one job: a background FILL behind
+     text (the over-limit row tint). Reused as a bar colour it sat next to
+     the plain grey bars and read as the darkest, least important day on the
+     chart — backwards for a marker whose whole point is to stand out. This
+     is a distinct, lighter step: warmer and brighter than the neutral grey
+     bars, dimmer than the full accent reserved for "selected". */
+  --today-marker: #dd8b35;
+  --control-border: #6e6250;
+  --control-ink: #b3a894;
+  --radius-lg: 20px;
+  --radius-md: 13px;
+  --radius-sm: 9px;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 24px -18px rgba(0, 0, 0, 0.7);
 }
 
 * {
   box-sizing: border-box;
 }
 
-/* Chromium leaves a transitioning property stuck on its old value when the
-   var() behind it is swapped, so transitions are muted while the theme flips. */
-.theme-switching * {
-  transition: none !important;
-}
-
 html {
   height: 100%;
-  /* Declared on the root, not just body, so nothing upstream falls back to the
-     UA default (Times New Roman). */
   font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-/* Form controls and SVG don't inherit font-family from their parent by default
-   — they fall back to the UA font (Arial here). One rule keeps the whole app
-   on a single family instead of relying on every new control remembering to
-   opt in. */
 button,
 input,
 select,
@@ -89,81 +50,22 @@ body {
   margin: 0;
   height: 100%;
   overflow-x: hidden;
-  /* One family for the whole app; every control inherits it. Inter is used
-     when the user happens to have it, but it is not a Windows font and nothing
-     is bundled, so Segoe UI carries the real weight on Windows — near-identical
-     neo-grotesque, present on every machine, zero download. Both have tabular
-     figures, which the timer readouts rely on. */
   font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--ground);
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 13.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .device {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 440px;
+  max-width: 460px;
   margin: 0 auto;
-}
-
-/* The strip that used to sit above the timer is gone. It spent a whole row
-   of a 370px-tall window on a "tracking" label, which only ever said the
-   same thing, next to a theme toggle. The toggle now sits with the other
-   controls under the total, and the window starts straight at the number
-   people opened it to read. */
-.today-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-/* Keeps the toggle on the right even when back-to-today is hidden, which is
-   most of the time, since a lone flex item would otherwise sit left. */
-.today-actions .theme-toggle {
-  margin-left: auto;
-}
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 4px var(--accent);
-  flex-shrink: 0;
-}
-
-.theme-toggle {
-  border: 1px solid var(--control-border);
-  background: transparent;
-  color: var(--control-ink);
-  font-family: inherit;
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  padding: 2px 7px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.theme-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-section {
-  padding: 16px;
-  border-bottom: 1px solid var(--rule);
-  flex-shrink: 0;
-  transition: border-color 0.2s ease;
-}
-
-.device {
+  padding: 16px 16px 22px;
+  gap: 12px;
   overflow-y: auto;
 }
 
@@ -177,6 +79,7 @@ section {
 
 .device::-webkit-scrollbar-thumb {
   background: var(--rule);
+  border-radius: 4px;
 }
 
 .device::-webkit-scrollbar-thumb:hover {
@@ -187,203 +90,270 @@ section {
   display: none !important;
 }
 
-.label {
-  color: var(--muted);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.label-row {
+/* ---- brand row ---- */
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.label-row .label {
-  margin-bottom: 0;
-}
-
-section > .label {
-  margin-bottom: 12px;
-  display: block;
-}
-
-/* ---- mini buttons: snooze, back-to-today ---- */
-.mini-btn {
-  border: 1px solid var(--control-border);
-  background: transparent;
-  color: var(--control-ink);
-  font-family: inherit;
-  font-size: 10.5px;
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.mini-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* Spacing now comes from .today-actions, which owns the row this sits in. */
-
-/* ---- today: dial + total ---- */
-.today {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.dial {
-  width: 78px;
-  height: 78px;
+  gap: 9px;
+  padding: 2px 2px 4px;
   flex-shrink: 0;
 }
 
-.dial-tick {
-  stroke: var(--rule);
-  stroke-width: 3;
+/* CSS-drawn, not an image: assets/ is deliberately not bundled into the exe
+   (nothing at runtime reads it — see the packaging notes in the README), so
+   a mark built from gradients and a border-radius ring has no file to ship
+   or go missing, in dev preview or in the packaged build alike. */
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  background: linear-gradient(145deg, #ffb15c, var(--accent) 55%, #c96a12);
+  position: relative;
+  box-shadow: 0 2px 6px -1px rgba(242, 140, 40, 0.45);
 }
 
-.dial-tick.lit {
-  stroke: var(--accent);
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-right-color: transparent;
+  transform: rotate(-45deg);
 }
 
-.today-text {
+.brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+
+/* ---- stat row: today + monthly average, side by side ---- */
+.stat-row {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.stat-card {
   flex: 1;
   min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 16px 16px 14px;
 }
 
-.total {
-  font-size: 24px;
+.stat-card-label {
+  font-size: 11px;
   font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.stat-card-value {
+  margin-top: 8px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
-.total .unit {
+.stat-card-sub {
+  margin-top: 6px;
+  font-size: 11.5px;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 400;
-  margin-left: 3px;
 }
 
-.sub {
+.stat-card-sub .accent {
+  color: var(--accent);
+}
+
+.stat-card-delta {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+/* ---- break row ---- */
+.break-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  padding: 11px 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.break-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
+  flex-shrink: 0;
+}
+
+.break-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
   color: var(--muted);
-  font-size: 11px;
-  margin-top: 5px;
 }
 
-.sub .accent {
+.break-text .accent {
   color: var(--accent);
+  font-weight: 600;
 }
 
-.limit-line {
-  color: var(--muted);
-  font-size: 10.5px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--rule);
+/* ---- shared card shell ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 18px;
+  flex-shrink: 0;
 }
 
-.limit-line .val {
-  color: var(--ink);
-}
-
-.limit-line .over {
-  color: var(--accent);
-}
-
-.limit-line:empty {
-  display: none;
-}
-
-/* ---- history ---- */
-.range-toggle {
+.card-header {
   display: flex;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 10px;
 }
 
-.range-toggle button {
+.card-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---- month navigation ---- */
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chev-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   border: 1px solid var(--control-border);
   background: transparent;
   color: var(--control-ink);
-  font-family: inherit;
-  font-size: 10.5px;
-  padding: 3px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  font-size: 14px;
+  line-height: 1;
+  transition: border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
-.range-toggle button:hover {
+.chev-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-/* Active state needs more than accent-colored text (too subtle at 10.5px) but
-   must not be a solid accent block either — solid accent is the chart bars'
-   language, and a solid button sitting right above the chart read as another
-   bar. A dimmed fill plus a full-strength border keeps controls and data
-   visually separate. */
-.range-toggle button.active {
-  border-color: var(--accent);
-  background: var(--accent-dim);
+.chev-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.month-label {
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink);
+  min-width: 108px;
+  text-align: center;
 }
 
-.week-chart {
+/* ---- month stat chips ---- */
+.month-stats {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 6px;
-  position: relative;
-  height: 56px;
-  /* Set on the chart rather than .label-row so the "Top apps" heading keeps
-     its own spacing. Note this does NOT add to .label-row's 20px — adjacent
-     sibling margins collapse to the larger of the two, so this value *is* the
-     resulting gap. It needs to clear 20px to have any effect at all.
-     Worth the room: a full-height bar is bottom-aligned in a fixed 56px box,
-     so it starts near the very top and was landing ~5px under the buttons. */
-  margin-top: 32px;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 
-/* Was the same color as an empty bar's fill, so on a mostly-empty week the
-   one real bar looked like a floating box with nothing anchoring it — this
-   makes the shared baseline visible enough to read as "7 day-slots, most
-   at zero" rather than "something's wrong". */
-.week-chart::after {
+.month-stat {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+}
+
+.month-stat-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.month-stat-value {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- month bar chart: up to 31 bars, one per day, dates shown ---- */
+.month-chart-wrap {
+  position: relative;
+}
+
+.month-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 92px;
+  position: relative;
+}
+
+.month-chart::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 22px;
   height: 1px;
   background: var(--muted);
-  opacity: 0.5;
+  opacity: 0.35;
 }
 
-.week-chart.dense {
-  gap: 2px;
-}
-
-.week-col {
+.month-col {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
   flex: 1;
   height: 100%;
-  gap: 5px;
+  gap: 4px;
   cursor: pointer;
+  min-width: 0;
 }
 
-.week-bar-track {
+.month-bar-track {
   display: flex;
   align-items: flex-end;
   flex: 1;
@@ -391,62 +361,64 @@ section > .label {
   justify-content: center;
 }
 
-.week-bar {
-  width: 60%;
+.month-bar {
+  width: 68%;
+  min-width: 2px;
   background: var(--control-border);
+  border-radius: 2px 2px 0 0;
   min-height: 2px;
-  transition: opacity 0.15s ease, height 0.25s ease;
+  transition: opacity 0.15s ease, height 0.25s ease, background-color 0.15s ease;
 }
 
-.week-bar.empty {
+.month-bar.empty {
   min-height: 0;
   height: 0 !important;
 }
 
-.week-chart.dense .week-bar {
-  width: 100%;
+.month-bar.today {
+  background: var(--today-marker);
 }
 
-.week-col:hover .week-bar {
-  opacity: 0.7;
-}
-
-/* Three distinct states, because "today" and "selected" are different facts
-   and previously shared one solid-accent rule: picking any past day left two
-   identical orange bars with nothing saying which one was picked.
-   plain = neutral, today = dimmed accent, selected = solid accent. */
-.week-bar.today {
-  background: var(--accent-dim);
-}
-
-.week-col.selected .week-bar {
+.month-col.selected .month-bar {
   background: var(--accent);
 }
 
-.week-day {
-  font-size: 9.5px;
+.month-col:hover .month-bar {
+  opacity: 0.75;
+}
+
+.month-day-num {
+  font-size: 8px;
   color: var(--muted);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.35;
 }
 
-.week-chart.dense .week-day {
-  display: none;
+/* Every 5th label (and today's, and the selected one) kept at full opacity —
+   31 numbers in a row is illegible at 8px, but dropping most of them
+   entirely loses the "dates are shown" requirement this section exists for.
+   Dimming keeps all of them present and readable up close while only a
+   fifth compete for attention at a glance. */
+.month-col--tick .month-day-num,
+.month-col--today .month-day-num,
+.month-col.selected .month-day-num {
+  opacity: 1;
 }
 
-/* Same split as the bars — the label alone shouldn't claim two days are picked. */
-.week-day.today {
-  color: var(--muted);
+.month-col--today .month-day-num {
+  color: var(--ink);
 }
 
-.week-col.selected .week-day {
+.month-col.selected .month-day-num {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .chart-hint {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--muted);
-  margin-top: 10px;
+  margin-top: 12px;
   text-align: center;
 }
 
@@ -454,91 +426,175 @@ section > .label {
   display: none;
 }
 
-/* ---- top apps ---- */
+/* ---- top apps this month: the month-aggregate list, always visible ---- */
+.month-apps {
+  margin-top: 16px;
+}
+
+.month-apps-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+/* ---- day detail: appears under the chart once a day is picked ---- */
+.day-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--rule);
+}
+
+.day-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.day-detail-date {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.day-detail-total {
+  font-size: 12.5px;
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.day-detail-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--control-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.day-detail-close:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- top apps (shared by "today" list and the day-detail list) ---- */
 .app-row-wrap + .app-row-wrap {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .app-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 4px;
-  border-left: 2px solid transparent;
+  gap: 11px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
 }
 
 .app-row.over-limit {
-  border-left-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.app-icon-wrap {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .app-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
 }
 
 .app-fallback {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   color: var(--accent-fg);
   background: var(--accent);
 }
 
-.app-name {
+.app-main {
   flex: 1;
   min-width: 0;
+}
+
+.app-name {
+  font-size: 12.5px;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
 }
 
 .app-bar {
-  width: 56px;
-  height: 8px;
-  flex-shrink: 0;
-  background: var(--ground);
-  border: 1px solid var(--control-border);
-  position: relative;
+  margin-top: 5px;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-raised);
   overflow: hidden;
 }
 
 .app-bar-fill {
-  position: absolute;
-  inset: 0;
+  height: 100%;
+  border-radius: 999px;
   width: var(--pct);
   background: var(--accent);
   opacity: var(--op, 1);
 }
 
+.app-meta {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .limit-note {
   font-size: 10px;
   color: var(--muted);
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
 .over-tag {
   font-size: 10px;
   color: var(--accent);
-  flex-shrink: 0;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .app-time {
-  font-size: 11.5px;
-  color: var(--muted);
-  flex-shrink: 0;
-  width: 44px;
-  text-align: right;
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  min-width: 46px;
+  text-align: right;
 }
 
 .limit-btn {
@@ -546,22 +602,19 @@ section > .label {
   background: transparent;
   color: var(--control-ink);
   flex-shrink: 0;
-  /* Was 18px around a 13px glyph — read as an afterthought next to the 12px
-     app name. Sized up so the icon itself is close to the row's own icon
-     size (16px), with the button box padded a couple px beyond that for a
-     comfortable click target without changing the row's height. */
-  width: 22px;
-  height: 22px;
-  margin-left: 2px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: color 0.15s ease;
+  border-radius: 50%;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .limit-btn:hover {
   color: var(--accent);
+  background: var(--surface-raised);
 }
 
 .see-more-btn {
@@ -571,8 +624,10 @@ section > .label {
   background: transparent;
   color: var(--control-ink);
   font-family: inherit;
-  font-size: 10.5px;
-  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 8px 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
@@ -583,29 +638,30 @@ section > .label {
 }
 
 .empty-note {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
+  padding: 6px 4px;
 }
 
 /* ---- limit editor popover ---- */
 .limit-editor {
-  padding: 10px 4px 4px;
-  margin-top: 4px;
+  padding: 12px 4px 2px;
+  margin-top: 8px;
   border-top: 1px dashed var(--rule);
 }
 
 .limit-editor-label {
   display: block;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 9px;
 }
 
 .time-picker-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 11px;
 }
 
 .time-picker-row .select-input {
@@ -614,7 +670,7 @@ section > .label {
 }
 
 .time-picker-sep {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
   flex-shrink: 0;
 }
@@ -635,13 +691,11 @@ section > .label {
   background: transparent;
   color: var(--control-ink);
   font-family: inherit;
-  font-size: 10.5px;
-  /* Fixed height + centred content rather than padding alone: at fractional
-     display scaling a 1px border becomes a sub-pixel value that rounds up on
-     one button and down on its neighbour, so padding-derived heights made
-     cancel and ok visibly different sizes. */
-  height: 24px;
-  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -658,6 +712,7 @@ section > .label {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
+  font-weight: 600;
 }
 
 .ghost-btn.primary:hover {
@@ -674,76 +729,74 @@ section > .label {
 }
 
 .setting-row + .setting-row {
-  margin-top: 12px;
+  margin-top: 15px;
 }
 
 .setting-label {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
 }
 
 .seg {
   display: flex;
-  gap: 2px;
+  gap: 3px;
+  background: var(--surface-raised);
+  padding: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .seg button {
-  border: 1px solid var(--control-border);
+  border: none;
   background: transparent;
   color: var(--control-ink);
   font-family: inherit;
-  font-size: 10.5px;
-  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .seg button:hover {
-  border-color: var(--accent);
   color: var(--accent);
 }
 
 .seg button.active {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  color: var(--ink);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
 }
 
 .select-input {
   -webkit-appearance: none;
   appearance: none;
   font-family: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink);
-  background: var(--ground);
+  background: var(--surface-raised);
   border: 1px solid var(--control-border);
-  padding: 5px 24px 5px 9px;
+  border-radius: var(--radius-sm);
+  padding: 7px 26px 7px 11px;
   cursor: pointer;
   transition: border-color 0.15s ease;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a49a88' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23b3a894' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
+  background-position: right 9px center;
 }
 
-/* The chevron's stroke color is baked into the SVG data URI, so it can't
-   read var(--control-ink) directly — swapped per theme instead. */
-[data-theme="light"] .select-input {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%234a4231' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-}
-
-.select-input:hover {
-  border-color: var(--accent);
-}
-
+.select-input:hover,
 .select-input:focus {
   outline: none;
   border-color: var(--accent);
 }
 
 .save-status {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--accent);
-  height: 14px;
-  margin-top: 10px;
+  height: 15px;
+  margin-top: 12px;
   text-align: right;
+  font-weight: 500;
 }

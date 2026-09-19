@@ -1,43 +1,30 @@
-const BAR_AREA_PX = 56;
 const REFRESH_MS = 5000;
-const DIAL_TICKS = 32;
 const COLLAPSED_APP_COUNT = 4;
 const LIMIT_MAX_HOURS = 23; // pairs with 5-minute steps up to :55, so max is 23h 55m
 const GOAL_HOUR_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1); // 1h..16h
+// Less than this and the bar chart's baseline is thicker than the bar itself.
+// More than this and the tallest realistic day (a handful of hours) barely
+// leaves the ground, which is exactly the "flat, lifeless chart" a premium
+// history section shouldn't have.
+const MONTH_BAR_AREA_PX = 62;
 
 const ICONS = {
   limit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg>',
 };
 
-function applyTheme(theme) {
-  const root = document.documentElement;
-  root.classList.add("theme-switching");
-  root.setAttribute("data-theme", theme);
-  void root.offsetHeight; // flush the swap while transitions are muted
-  requestAnimationFrame(() => root.classList.remove("theme-switching"));
-
-  document.getElementById("theme-toggle").textContent = theme;
-  localStorage.setItem("theme", theme);
-}
-
-function initTheme() {
-  applyTheme(localStorage.getItem("theme") || "dark");
-  document.getElementById("theme-toggle").addEventListener("click", () => {
-    const current = document.documentElement.getAttribute("data-theme");
-    applyTheme(current === "dark" ? "light" : "dark");
-  });
-}
-
 const state = {
+  month: { year: null, month: null }, // resolved from the first response
   selectedDay: null,
-  historyDays: 7,
   appsExpanded: false,
-  limitEditorFor: null, // processName of the row with its preset editor open
+  monthAppsExpanded: false,
+  topLimitEditorFor: null, // processName of the row with its preset editor open, in the "today" list
+  monthLimitEditorFor: null, // same, in the month-aggregate list
+  dayLimitEditorFor: null, // same, in the day-detail list — three separate keys so opening one editor never closes another
 };
 
-// The 5s poll would otherwise rebuild these lists every tick, dropping hover
+// The 5s poll would otherwise rebuild these on every tick, dropping hover
 // state and flickering. Re-render only when the data actually changed.
-const lastRender = { history: null, apps: null };
+const lastRender = { chart: null, topApps: null, monthApps: null, dayApps: null };
 
 function el(html) {
   const t = document.createElement("template");
@@ -58,92 +45,88 @@ function minutesLabel(minutes) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-// Stepped dial (not a smooth arc — old hardware couldn't render one), lit
-// proportionally for today's total against the daily limit.
-function renderDial(totalSeconds, goalSeconds) {
-  const g = document.getElementById("ticks");
-  g.innerHTML = "";
-  const fraction = goalSeconds > 0 ? Math.min(totalSeconds / goalSeconds, 1) : 0;
-  const litCount = Math.round(DIAL_TICKS * fraction);
-
-  for (let i = 0; i < DIAL_TICKS; i++) {
-    const angle = (i / DIAL_TICKS) * Math.PI * 2 - Math.PI / 2;
-    const inner = 36, outer = 44;
-    const x1 = 50 + Math.cos(angle) * inner, y1 = 50 + Math.sin(angle) * inner;
-    const x2 = 50 + Math.cos(angle) * outer, y2 = 50 + Math.sin(angle) * outer;
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", x1);
-    line.setAttribute("y1", y1);
-    line.setAttribute("x2", x2);
-    line.setAttribute("y2", y2);
-    line.setAttribute("class", "dial-tick" + (i < litCount ? " lit" : ""));
-    line.setAttribute("stroke-linecap", "round");
-    g.appendChild(line);
-  }
+// Date-only ISO strings ("2026-09-16") are UTC midnight by the JS Date spec,
+// so parsing one with `new Date(str)` and then formatting in a negative-UTC
+// timezone can print the day before. These strings represent a LOCAL
+// calendar day chosen by Python's date.today(), so they must be built as
+// local midnight instead — the two-argument-free Date(y, m, d) constructor
+// does that.
+function parseIsoDate(str) {
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
-function renderHistory(history, dense) {
-  const key = JSON.stringify([history, dense]);
-  if (lastRender.history === key) return;
-  lastRender.history = key;
+function shortDate(str) {
+  return parseIsoDate(str).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
-  const container = document.getElementById("week-chart");
+function fullDate(str) {
+  return parseIsoDate(str).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+// ---- month bar chart ----
+
+function renderMonthChart(days, selectedDay) {
+  const key = JSON.stringify([days.map((d) => [d.date, d.seconds]), selectedDay]);
+  if (lastRender.chart === key) return;
+  lastRender.chart = key;
+
+  const container = document.getElementById("month-chart");
   container.innerHTML = "";
-  container.classList.toggle("dense", dense);
 
-  const max = Math.max(...history.map((d) => d.seconds), 1);
+  const max = Math.max(...days.map((d) => d.seconds), 1);
 
-  history.forEach((d) => {
-    const heightPx = d.seconds ? Math.max((d.seconds / max) * BAR_AREA_PX, 2) : 0;
+  days.forEach((d) => {
+    const heightPx = d.seconds ? Math.max((d.seconds / max) * MONTH_BAR_AREA_PX, 2) : 0;
+    const isTick = d.dayNum === 1 || d.dayNum % 5 === 1;
+    const classes = [
+      "month-col",
+      d.date === selectedDay ? "selected" : "",
+      isTick ? "month-col--tick" : "",
+      d.isToday ? "month-col--today" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     const col = el(`
-      <div class="week-col ${d.isSelected ? "selected" : ""}" title="${escapeHtml(d.weekday)} — ${escapeHtml(d.label)}">
-        <div class="week-bar-track">
-          <div class="week-bar ${d.isToday ? "today" : ""} ${d.seconds ? "" : "empty"}" style="height:${heightPx}px"></div>
+      <div class="${classes}" title="${escapeHtml(shortDate(d.date))} — ${escapeHtml(d.label)}">
+        <div class="month-bar-track">
+          <div class="month-bar ${d.isToday ? "today" : ""} ${d.seconds ? "" : "empty"}" style="height:${heightPx}px"></div>
         </div>
-        <div class="week-day ${d.isToday ? "today" : ""}">${escapeHtml(d.weekday)}</div>
+        <div class="month-day-num">${d.dayNum}</div>
       </div>
     `);
     col.addEventListener("click", () => {
-      state.selectedDay = d.isToday ? null : d.date;
+      state.selectedDay = state.selectedDay === d.date ? null : d.date;
       refresh();
     });
     container.appendChild(col);
   });
 }
 
-function renderApps(apps, isToday) {
-  // Icons are large data URIs, so key on presence rather than content.
-  const key = JSON.stringify([
-    apps.map((a) => [a.name, a.seconds, !!a.icon, a.limitMinutes, a.limitExceeded]),
-    isToday,
-    state.appsExpanded,
-    state.limitEditorFor,
-  ]);
-  if (lastRender.apps === key) return;
-  lastRender.apps = key;
+// ---- shared app-row rendering, used by "today" and the day-detail list ----
 
-  const container = document.getElementById("app-list");
-  const moreBtn = document.getElementById("show-more-apps");
+function renderAppRows(container, apps, { collapsible, expanded, editorFor, onToggleEditor, moreBtn }) {
   container.innerHTML = "";
 
   if (!apps.length) {
-    const note = isToday
-      ? "No activity tracked yet today."
-      : "No activity recorded for this day.";
-    container.appendChild(el(`<div class="empty-note">${note}</div>`));
-    moreBtn.classList.add("hidden");
+    container.appendChild(el(`<div class="empty-note">Nothing recorded.</div>`));
+    if (moreBtn) moreBtn.classList.add("hidden");
     return;
   }
 
-  // Collapsing to hide one row costs a full-width button to save a 26px row —
-  // so the fold only earns its place from two hidden rows up.
-  const collapsible = apps.length - COLLAPSED_APP_COUNT >= 2;
-  const hidden = collapsible ? apps.length - COLLAPSED_APP_COUNT : 0;
-  const visible =
-    state.appsExpanded || !collapsible ? apps : apps.slice(0, COLLAPSED_APP_COUNT);
+  const canCollapse = collapsible && apps.length - COLLAPSED_APP_COUNT >= 2;
+  const hidden = canCollapse ? apps.length - COLLAPSED_APP_COUNT : 0;
+  const visible = expanded || !canCollapse ? apps : apps.slice(0, COLLAPSED_APP_COUNT);
 
-  moreBtn.classList.toggle("hidden", hidden <= 0);
-  moreBtn.textContent = state.appsExpanded ? "see less" : `see ${hidden} more`;
+  if (moreBtn) {
+    moreBtn.classList.toggle("hidden", hidden <= 0);
+    moreBtn.textContent = expanded ? "See less" : `See ${hidden} more`;
+  }
 
   const maxSeconds = Math.max(...apps.map((a) => a.seconds), 1);
 
@@ -154,7 +137,7 @@ function renderApps(apps, isToday) {
       : `<span class="app-fallback">${escapeHtml(a.name.charAt(0).toUpperCase())}</span>`;
 
     const limitBadge = a.limitExceeded
-      ? '<span class="over-tag">[over]</span>'
+      ? '<span class="over-tag">Over</span>'
       : a.limitMinutes
       ? `<span class="limit-note">of ${escapeHtml(minutesLabel(a.limitMinutes))}</span>`
       : "";
@@ -165,22 +148,23 @@ function renderApps(apps, isToday) {
     const wrap = el(`
       <div class="app-row-wrap">
         <div class="app-row ${a.limitExceeded ? "over-limit" : ""}" title="${name} — ${escapeHtml(a.label)}">
-          ${glyph}
-          <span class="app-name">${name}</span>
-          <span class="app-bar"><span class="app-bar-fill" style="--pct:${pct}%; --op:${op}"></span></span>
-          ${limitBadge}
-          <span class="app-time">${escapeHtml(a.label)}</span>
-          <button class="limit-btn" type="button" title="Set a daily limit for ${name}">${ICONS.limit}</button>
+          <span class="app-icon-wrap">${glyph}</span>
+          <div class="app-main">
+            <div class="app-name">${name}</div>
+            <div class="app-bar"><span class="app-bar-fill" style="--pct:${pct}%; --op:${op}"></span></div>
+          </div>
+          <div class="app-meta">
+            ${limitBadge}
+            <span class="app-time">${escapeHtml(a.label)}</span>
+            <button class="limit-btn" type="button" title="Set a daily limit for ${name}">${ICONS.limit}</button>
+          </div>
         </div>
       </div>
     `);
 
-    wrap.querySelector(".limit-btn").addEventListener("click", () => {
-      state.limitEditorFor = state.limitEditorFor === a.processName ? null : a.processName;
-      refresh();
-    });
+    wrap.querySelector(".limit-btn").addEventListener("click", () => onToggleEditor(a.processName));
 
-    if (state.limitEditorFor === a.processName) {
+    if (editorFor === a.processName) {
       wrap.appendChild(buildLimitEditor(a));
     }
 
@@ -193,7 +177,7 @@ function renderApps(apps, isToday) {
 function buildLimitEditor(app) {
   const editor = el(`
     <div class="limit-editor">
-      <span class="limit-editor-label">daily limit for ${escapeHtml(app.name)}</span>
+      <span class="limit-editor-label">Daily limit for ${escapeHtml(app.name)}</span>
       <div class="time-picker-row">
         <select class="select-input time-picker-hours"></select>
         <span class="time-picker-sep">h</span>
@@ -201,10 +185,10 @@ function buildLimitEditor(app) {
         <span class="time-picker-sep">m</span>
       </div>
       <div class="limit-editor-actions">
-        ${app.limitMinutes ? '<button class="ghost-btn" type="button" data-action="reset">reset</button>' : "<span></span>"}
+        ${app.limitMinutes ? '<button class="ghost-btn" type="button" data-action="reset">Reset</button>' : "<span></span>"}
         <div class="limit-editor-actions-right">
-          <button class="ghost-btn" type="button" data-action="cancel">cancel</button>
-          <button class="ghost-btn primary" type="button" data-action="ok">ok</button>
+          <button class="ghost-btn" type="button" data-action="cancel">Cancel</button>
+          <button class="ghost-btn primary" type="button" data-action="ok">OK</button>
         </div>
       </div>
     </div>
@@ -224,7 +208,9 @@ function buildLimitEditor(app) {
   minutesSelect.value = Math.round((current % 60) / 5) * 5;
 
   const close = () => {
-    state.limitEditorFor = null;
+    state.topLimitEditorFor = null;
+    state.monthLimitEditorFor = null;
+    state.dayLimitEditorFor = null;
     refresh();
   };
 
@@ -254,65 +240,155 @@ function populateGoalSelect() {
   select.innerHTML = GOAL_HOUR_OPTIONS.map((h) => `<option value="${h}">${h}h</option>`).join("");
 }
 
-async function refresh() {
+// ---- pulling both halves of state and rendering them ----
+
+async function refreshToday() {
   let data;
   try {
-    data = await window.pywebview.api.get_state(state.selectedDay, state.historyDays);
+    data = await window.pywebview.api.get_state();
   } catch (err) {
-    // Swallow so one bad poll doesn't become an unhandled rejection — the
-    // next 5s tick just tries again instead of the UI silently freezing.
-    console.error("refresh() failed, will retry on next poll:", err);
+    console.error("get_state() failed, will retry on next poll:", err);
     return;
   }
 
-  document.getElementById("total-value").textContent = data.totalLabel;
-  document.getElementById("day-label").textContent = "/ " + data.dayLabel.toLowerCase();
+  document.getElementById("today-value").textContent = data.totalLabel;
 
-  const limitLine = document.getElementById("limit-line");
-  const overText = data.goalExceeded ? ' <span class="over">[over]</span>' : "";
-  // "limit 5h" alone says nothing about where the day stands against it; the
-  // percentage is the part that's actually actionable at a glance.
-  const pct =
-    data.goalSeconds > 0
-      ? Math.round((data.totalSeconds / data.goalSeconds) * 100)
-      : null;
-  const pctText =
-    pct === null
-      ? ""
-      : ` · <span class="${data.goalExceeded ? "over" : "val"}">${pct}%</span>`;
-  limitLine.innerHTML =
-    `limit <span class="val">${data.goalHours}h</span>${pctText}${overText}`;
-
-  renderDial(data.totalSeconds, data.goalSeconds);
-  renderHistory(data.history, data.historyDays > 7);
-  renderApps(data.topApps, data.isToday);
-
-  const breakSub = document.getElementById("break-sub");
-  const snooze = document.getElementById("snooze-btn");
-  if (data.isToday) {
-    breakSub.classList.remove("hidden");
-    document.getElementById("break-time").textContent = `in ${data.breakInLabel}`;
-    snooze.textContent = `snooze ${data.snoozeMinutes}m`;
-    snooze.classList.remove("hidden");
+  const sub = document.getElementById("today-sub");
+  if (data.goalSeconds > 0) {
+    const pct = Math.round((data.totalSeconds / data.goalSeconds) * 100);
+    sub.innerHTML = data.goalExceeded
+      ? `<span class="accent">${pct}% of ${data.goalHours}h limit — over</span>`
+      : `${pct}% of ${data.goalHours}h limit`;
   } else {
-    breakSub.classList.add("hidden");
+    sub.textContent = "No daily limit set";
   }
 
-  document.getElementById("back-to-today").classList.toggle("hidden", data.isToday);
-  document.getElementById("chart-hint").classList.toggle("hidden", !data.isToday);
+  const deltaEl = document.getElementById("today-delta");
+  if (data.delta) {
+    deltaEl.textContent =
+      data.delta.direction === "same"
+        ? "About the same as yesterday"
+        : `${data.delta.label} ${data.delta.direction === "up" ? "more" : "less"} than yesterday`;
+  } else {
+    deltaEl.textContent = "";
+  }
+
+  document.getElementById("avg-value").textContent = data.avgLabel;
+
+  document.getElementById("break-time").textContent = `in ${data.breakInLabel}`;
+  const snooze = document.getElementById("snooze-btn");
+  snooze.textContent = `Snooze ${data.snoozeMinutes}m`;
+  snooze.classList.remove("hidden");
+
+  const key = JSON.stringify([
+    data.topApps.map((a) => [a.name, a.seconds, !!a.icon, a.limitMinutes, a.limitExceeded]),
+    state.appsExpanded,
+    state.topLimitEditorFor,
+  ]);
+  if (lastRender.topApps !== key) {
+    lastRender.topApps = key;
+    renderAppRows(document.getElementById("app-list"), data.topApps, {
+      collapsible: true,
+      expanded: state.appsExpanded,
+      editorFor: state.topLimitEditorFor,
+      onToggleEditor: (name) => {
+        state.topLimitEditorFor = state.topLimitEditorFor === name ? null : name;
+        refresh();
+      },
+      moreBtn: document.getElementById("show-more-apps"),
+    });
+  }
 
   setSegmentActive(document.getElementById("break-segment"), data.breakMinutes);
-  setSegmentActive(document.getElementById("range-segment"), data.historyDays);
-
   const goalSelect = document.getElementById("goal-select");
   if (document.activeElement !== goalSelect) {
     goalSelect.value = String(Math.min(16, Math.max(1, Math.round(data.goalHours))));
   }
 }
 
+async function refreshMonth() {
+  let data;
+  try {
+    data = await window.pywebview.api.get_month_state(
+      state.month.year || undefined,
+      state.month.month || undefined,
+      state.selectedDay || undefined
+    );
+  } catch (err) {
+    console.error("get_month_state() failed, will retry on next poll:", err);
+    return;
+  }
+
+  state.month = { year: data.year, month: data.month };
+
+  document.getElementById("month-label").textContent = data.monthLabel;
+  document.getElementById("month-prev").disabled = !data.canGoPrev;
+  document.getElementById("month-next").disabled = !data.canGoNext;
+
+  document.getElementById("month-total").textContent = data.totalLabel;
+  document.getElementById("month-avg").textContent = data.activeDays ? data.avgLabel : "—";
+  document.getElementById("month-busiest").textContent = data.busiestDay
+    ? `${shortDate(data.busiestDay.date)} · ${data.busiestDay.label}`
+    : "—";
+
+  renderMonthChart(data.days, state.selectedDay);
+
+  const monthKey = JSON.stringify([
+    data.topApps.map((a) => [a.name, a.seconds, !!a.icon]),
+    state.monthAppsExpanded,
+    state.monthLimitEditorFor,
+  ]);
+  if (lastRender.monthApps !== monthKey) {
+    lastRender.monthApps = monthKey;
+    renderAppRows(document.getElementById("month-app-list"), data.topApps, {
+      collapsible: true,
+      expanded: state.monthAppsExpanded,
+      editorFor: state.monthLimitEditorFor,
+      onToggleEditor: (name) => {
+        state.monthLimitEditorFor = state.monthLimitEditorFor === name ? null : name;
+        refresh();
+      },
+      moreBtn: document.getElementById("show-more-month-apps"),
+    });
+  }
+
+  const detail = document.getElementById("day-detail");
+  if (data.selected) {
+    detail.classList.remove("hidden");
+    document.getElementById("day-detail-date").textContent = fullDate(data.selected.date);
+    document.getElementById("day-detail-total").textContent = data.selected.totalLabel;
+
+    const key = JSON.stringify([
+      data.selected.date,
+      data.selected.topApps.map((a) => [a.name, a.seconds, !!a.icon]),
+      state.dayLimitEditorFor,
+    ]);
+    if (lastRender.dayApps !== key) {
+      lastRender.dayApps = key;
+      renderAppRows(document.getElementById("day-detail-apps"), data.selected.topApps, {
+        collapsible: false,
+        expanded: true,
+        editorFor: state.dayLimitEditorFor,
+        onToggleEditor: (name) => {
+          state.dayLimitEditorFor = state.dayLimitEditorFor === name ? null : name;
+          refresh();
+        },
+        moreBtn: null,
+      });
+    }
+  } else {
+    detail.classList.add("hidden");
+    lastRender.dayApps = null;
+  }
+}
+
+async function refresh() {
+  await Promise.all([refreshToday(), refreshMonth()]);
+}
+
 function flashSaved() {
   const status = document.getElementById("save-status");
-  status.textContent = "saved";
+  status.textContent = "Saved";
   setTimeout(() => (status.textContent = ""), 1200);
 }
 
@@ -332,29 +408,47 @@ function initControls() {
     saveSettings();
   });
 
-  document.getElementById("range-segment").addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    state.historyDays = Number(btn.dataset.value);
-    refresh();
-  });
-
-  document.getElementById("back-to-today").addEventListener("click", () => {
-    state.selectedDay = null;
-    refresh();
-  });
-
-  document.getElementById("show-more-apps").addEventListener("click", () => {
-    state.appsExpanded = !state.appsExpanded;
-    refresh();
-  });
+  document.getElementById("goal-select").addEventListener("change", saveSettings);
 
   document.getElementById("snooze-btn").addEventListener("click", async () => {
     await window.pywebview.api.snooze_break();
     refresh();
   });
 
-  document.getElementById("goal-select").addEventListener("change", saveSettings);
+  document.getElementById("show-more-apps").addEventListener("click", () => {
+    state.appsExpanded = !state.appsExpanded;
+    lastRender.topApps = null;
+    refresh();
+  });
+
+  document.getElementById("show-more-month-apps").addEventListener("click", () => {
+    state.monthAppsExpanded = !state.monthAppsExpanded;
+    lastRender.monthApps = null;
+    refresh();
+  });
+
+  document.getElementById("month-prev").addEventListener("click", () => {
+    const m = state.month.month === 1 ? 12 : state.month.month - 1;
+    const y = state.month.month === 1 ? state.month.year - 1 : state.month.year;
+    state.month = { year: y, month: m };
+    state.selectedDay = null;
+    lastRender.chart = null;
+    refresh();
+  });
+
+  document.getElementById("month-next").addEventListener("click", () => {
+    const m = state.month.month === 12 ? 1 : state.month.month + 1;
+    const y = state.month.month === 12 ? state.month.year + 1 : state.month.year;
+    state.month = { year: y, month: m };
+    state.selectedDay = null;
+    lastRender.chart = null;
+    refresh();
+  });
+
+  document.getElementById("day-detail-close").addEventListener("click", () => {
+    state.selectedDay = null;
+    refresh();
+  });
 }
 
 let initialized = false;
@@ -367,7 +461,6 @@ function boot() {
   initialized = true;
 
   try {
-    initTheme();
     populateGoalSelect();
     initControls();
     refresh();

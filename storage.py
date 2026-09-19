@@ -3,6 +3,7 @@ import os
 import shutil
 import time
 import re
+import calendar
 from datetime import date, datetime, timedelta
 
 from paths import user_data_path
@@ -324,23 +325,8 @@ def remember_app_paths(new_paths):
     _atomic_write_json(PATHS_FILE, known)
 
 
-def get_last_n_days(n):
-    """Returns list of (date_str, total_seconds) for the last n days, oldest first."""
-    data = load_data()
-    result = []
-    for i in range(n - 1, -1, -1):
-        d = str(date.today() - timedelta(days=i))
-        day = _normalize_day(data.get(d, {}))
-        result.append((d, day.get("total", 0)))
-    return result
-
-
 def previous_day_str(day_str):
     return str(date.fromisoformat(day_str) - timedelta(days=1))
-
-
-def weekday_label(day_str):
-    return date.fromisoformat(day_str).strftime("%a")
 
 
 def friendly_day_label(day_str):
@@ -400,3 +386,93 @@ def set_app_limit(process_name, minutes):
         limits[process_name] = minutes
     settings["app_limits"] = limits
     save_settings(settings)
+
+
+def earliest_recorded_date():
+    """The oldest date key in the store, or None if it's empty.
+
+    Used to bound month navigation: without this, "previous month" has no
+    natural floor and a new user could arrow back into years of empty months
+    with nothing to look at.
+    """
+    data = load_data()
+    if not data:
+        return None
+    return min(data)
+
+
+def _month_bounds(year, month):
+    """(first_of_month, last_of_month) as date objects."""
+    first = date(year, month, 1)
+    last = date(year, month, calendar.monthrange(year, month)[1])
+    return first, last
+
+
+def _prev_month(year, month):
+    return (year - 1, 12) if month == 1 else (year, month - 1)
+
+
+def can_go_prev_month(year, month):
+    earliest = earliest_recorded_date()
+    if not earliest:
+        return False
+    earliest_ym = (int(earliest[:4]), int(earliest[5:7]))
+    return _prev_month(year, month) >= earliest_ym
+
+
+def can_go_next_month(year, month):
+    """Never past the calendar month containing today — there is nothing to
+    show for a month that hasn't happened yet, and letting the arrow advance
+    into it would just be an empty chart with no way back without noticing."""
+    today = date.today()
+    return (year, month) < (today.year, today.month)
+
+
+def get_month_days(year, month):
+    """One entry per day of the month, oldest first.
+
+    Days after today are omitted rather than shown empty, on the same logic
+    as can_go_next_month: a bar for a day that hasn't happened yet isn't a
+    zero, it's a question that hasn't been asked.
+    """
+    data = load_data()
+    first, last = _month_bounds(year, month)
+    today = date.today()
+    if last > today:
+        last = today if (year, month) == (today.year, today.month) else first - timedelta(days=1)
+
+    days = []
+    d = first
+    while d <= last:
+        key = str(d)
+        day = _normalize_day(data.get(key, {}))
+        days.append(
+            {
+                "date": key,
+                "dayNum": d.day,
+                "weekday": d.strftime("%a"),
+                "seconds": day.get("total", 0),
+                "label": format_hms(day.get("total", 0)),
+                "isToday": key == str(today),
+            }
+        )
+        d += timedelta(days=1)
+    return days
+
+
+def get_month_apps(year, month):
+    """process_name -> total seconds, summed across every day in the month."""
+    data = load_data()
+    first, last = _month_bounds(year, month)
+    totals = {}
+    d = first
+    while d <= last:
+        day = _normalize_day(data.get(str(d), {}))
+        for name, secs in day.get("apps", {}).items():
+            totals[name] = totals.get(name, 0) + secs
+        d += timedelta(days=1)
+    return totals
+
+
+def month_label(year, month):
+    return date(year, month, 1).strftime("%B %Y")

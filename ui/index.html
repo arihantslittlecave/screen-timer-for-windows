@@ -1,52 +1,97 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Screen Timer for Windows</title>
-  <link rel="stylesheet" href="style.css?v=41" />
+  <link rel="stylesheet" href="style.css?v=50" />
 </head>
 <body>
   <div class="device">
-    <section class="today">
-      <svg class="dial" id="dial" viewBox="0 0 100 100"><g id="ticks"></g></svg>
-      <div class="today-text">
-        <div class="total"><span id="total-value">0m</span><span class="unit" id="day-label">/ today</span></div>
-        <div class="sub" id="break-sub">
-          next break <span class="accent" id="break-time">in --</span>
-          <button class="mini-btn hidden" id="snooze-btn" type="button">snooze</button>
-        </div>
-        <div class="limit-line" id="limit-line"></div>
-        <div class="today-actions">
-          <button class="mini-btn hidden" id="back-to-today" type="button">&lt; back to today</button>
-          <button class="theme-toggle" id="theme-toggle" type="button" title="toggle dark/light"></button>
-        </div>
+    <header class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">Screen Timer</span>
+    </header>
+
+    <section class="stat-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Today</div>
+        <div class="stat-card-value"><span id="today-value">0m</span></div>
+        <div class="stat-card-sub" id="today-sub"></div>
+        <div class="stat-card-delta" id="today-delta"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Daily average</div>
+        <div class="stat-card-value"><span id="avg-value">0m</span></div>
+        <div class="stat-card-sub">this month</div>
       </div>
     </section>
 
-    <section>
-      <div class="label-row">
-        <div class="label">Top apps</div>
+    <div class="break-row" id="break-row">
+      <div class="break-dot"></div>
+      <span class="break-text">Next break <span class="accent" id="break-time">in --</span></span>
+      <button class="ghost-btn hidden" id="snooze-btn" type="button">Snooze 5m</button>
+    </div>
+
+    <section class="card">
+      <div class="card-header">
+        <span class="card-title">Top apps today</span>
       </div>
       <div id="app-list"></div>
       <button class="see-more-btn hidden" id="show-more-apps" type="button"></button>
     </section>
 
-    <section>
-      <div class="label-row">
-        <div class="label">History</div>
-        <div class="range-toggle" id="range-segment" data-value="7">
-          <button type="button" data-value="7">7d</button>
-          <button type="button" data-value="30">30d</button>
+    <section class="card">
+      <div class="card-header">
+        <span class="card-title">History</span>
+        <div class="month-nav">
+          <button class="chev-btn" id="month-prev" type="button" aria-label="Previous month">&#8249;</button>
+          <span class="month-label" id="month-label">—</span>
+          <button class="chev-btn" id="month-next" type="button" aria-label="Next month">&#8250;</button>
         </div>
       </div>
-      <div class="week-chart" id="week-chart"></div>
-      <div class="chart-hint" id="chart-hint">pick a day to see its breakdown</div>
+
+      <div class="month-stats">
+        <div class="month-stat">
+          <span class="month-stat-label">Total</span>
+          <span class="month-stat-value" id="month-total">—</span>
+        </div>
+        <div class="month-stat">
+          <span class="month-stat-label">Daily avg</span>
+          <span class="month-stat-value" id="month-avg">—</span>
+        </div>
+        <div class="month-stat">
+          <span class="month-stat-label">Busiest day</span>
+          <span class="month-stat-value" id="month-busiest">—</span>
+        </div>
+      </div>
+
+      <div class="month-chart-wrap">
+        <div class="month-chart" id="month-chart"></div>
+      </div>
+      <div class="chart-hint" id="chart-hint">Tap a day to see its breakdown</div>
+
+      <div class="month-apps">
+        <div class="month-apps-label">Top apps this month</div>
+        <div id="month-app-list"></div>
+        <button class="see-more-btn hidden" id="show-more-month-apps" type="button"></button>
+      </div>
+
+      <div class="day-detail hidden" id="day-detail">
+        <div class="day-detail-header">
+          <span class="day-detail-date" id="day-detail-date"></span>
+          <span class="day-detail-total" id="day-detail-total"></span>
+          <button class="day-detail-close" id="day-detail-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div id="day-detail-apps"></div>
+      </div>
     </section>
 
-    <section>
-      <div class="label">Settings</div>
+    <section class="card">
+      <div class="card-header">
+        <span class="card-title">Settings</span>
+      </div>
       <div class="setting-row">
-        <span class="setting-label">break every</span>
+        <span class="setting-label">Break every</span>
         <div class="seg" id="break-segment" data-value="30">
           <button type="button" data-value="15">15m</button>
           <button type="button" data-value="30">30m</button>
@@ -56,12 +101,12 @@
         </div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">daily limit</span>
+        <span class="setting-label">Daily limit</span>
         <select class="select-input" id="goal-select"></select>
       </div>
       <div class="save-status" id="save-status"></div>
     </section>
   </div>
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=50"></script>
 </body>
 </html>

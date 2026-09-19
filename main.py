@@ -518,9 +518,12 @@ def main():
         WINDOW_TITLE,
         ui_path,
         js_api=Api(),
-        width=370,
-        height=700,
-        min_size=(320, 480),
+        # Widened from 370 for the card-based layout: two stat tiles side by
+        # side and a 31-bar month chart both need more breathing room than
+        # the previous single-column design did.
+        width=420,
+        height=760,
+        min_size=(360, 520),
         hidden=start_hidden,
         resizable=True,
     )
