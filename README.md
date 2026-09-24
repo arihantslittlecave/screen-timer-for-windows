@@ -8,7 +8,8 @@ your taskbar and reminds you to take breaks.
 Free, open source and private. No account, and nothing ever leaves your
 computer.
 
-### [⬇ Download ScreenTimer.exe](https://github.com/arihantslittlecave/screen-timer-for-windows/releases/latest/download/ScreenTimer.exe)
+**Get it from Releases**, on the right side of this page, or
+[build it yourself](#for-developers) from the code here.
 
 <sub>For Windows 10 and 11 · about 17 MB · no installer</sub>
 
@@ -29,7 +30,8 @@ computer.
 
 ## Start in 3 steps
 
-1. **Download** the file using the link above
+1. **Download** `ScreenTimer.exe` from the newest release under
+   **Releases**, on the right side of this page
 2. **Double-click** `ScreenTimer.exe`
 3. **Find it** in your taskbar, near the clock: a black icon with a blue ring.
    Click it to open. If you can't see it, click the **^** arrow next to the
