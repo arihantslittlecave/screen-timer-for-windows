@@ -1,9 +1,11 @@
 import ctypes
+import os
 from ctypes import wintypes
 
 import psutil
 
 user32 = ctypes.windll.user32
+_OWN_PID = os.getpid()
 
 # (hwnd, pid) -> (process_name, exe_path) for the last foreground window.
 # The tracking loop asks every second, and the answer almost never changes
@@ -22,7 +24,9 @@ def get_active_process():
         return None, None
     pid = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-    if not pid.value:
+    # Our own window. The ignore list catches ScreenTimer.exe, but run from
+    # source the process is pythonw.exe, which can't be ignored by name.
+    if not pid.value or pid.value == _OWN_PID:
         return None, None
 
     key = (hwnd, pid.value)
