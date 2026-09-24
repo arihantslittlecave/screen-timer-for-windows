@@ -10,10 +10,16 @@ ever leaves your computer.
 
 <table>
 <tr>
-<td><img src="assets/screenshot-dark.png" width="360" alt="Dark mode"></td>
-<td><img src="assets/screenshot-light.png" width="360" alt="Light mode"></td>
+<td><img src="assets/screenshot-day.png" width="360" alt="Day: today's total, your daily limit, next break, and apps ranked by time"></td>
+<td><img src="assets/screenshot-week.png" width="360" alt="Week: a bar for each day, with your daily limit marked"></td>
+</tr>
+<tr>
+<td><img src="assets/screenshot-month.png" width="360" alt="Month: a calendar shaded by how much you used each day"></td>
+<td><img src="assets/screenshot-all.png" width="360" alt="All time: your total since you started, daily average, busiest day and each month"></td>
 </tr>
 </table>
+
+<sub>Screenshots use made-up demo hours, not anyone's real history.</sub>
 
 ---
 
@@ -26,7 +32,7 @@ ever leaves your computer.
 3. That's it, it's running
 
 There's no installer and nothing to set up. It starts tracking straight away
-and puts a small orange icon in your taskbar.
+and puts a small blue ring icon in your taskbar.
 
 ### If Windows shows a blue warning
 
@@ -70,7 +76,7 @@ If it's on, your options are:
 ### Where to find it once it's running
 
 Look at the **bottom right of your taskbar**, near the clock. There'll be a
-small orange circle icon. Click it to open the window.
+small black icon with a blue ring. Click it to open the window.
 
 If you can't see it, click the small **^** arrow next to the clock, it may be
 tucked in there. You can drag it out onto the taskbar to keep it visible.
@@ -81,29 +87,30 @@ tucked in there. You can drag it out onto the taskbar to keep it visible.
 
 | What you want | How to do it |
 |---|---|
-| Open the window | Click the orange icon in your taskbar |
+| Open the window | Click the Screen Timer icon in your taskbar |
 | Close the window | Click X. It keeps tracking in the background |
 | Quit completely | Right-click the tray icon, then Quit |
-| Switch dark/light | The button at the top right of the window |
-| See another day | Click any bar in the History chart |
+| See today, this week, this month, or everything | The **Day**, **Week**, **Month** and **All time** tabs |
+| See another day, week or month | The **‹ ›** arrows (or your arrow keys) |
+| See one day in detail | Click any bar in Week, or any day in Month |
 
 ### Settings
 
-Everything is at the bottom of the window.
+Click the gear at the top right.
 
-- **Break every** sets how often it reminds you to step away
-- **Daily limit** is your target for the day. The dial fills up as you get
-  closer to it
-- **Per-app limits** are set by clicking the small icon at the right of any
-  app in the list
+- **Break reminder** sets how often it nudges you to step away
+- **Daily limit** is your target for the day. The bar under today's total
+  fills up as you get closer to it, and you get a notification when you pass it
+- **Start with Windows** turns starting at sign-in on or off
+- **Per-app limits** are set by clicking the small timer icon next to any app
+  on the Day tab
 
 ### Stop it starting automatically
 
 It adds itself to your startup apps so you don't have to remember to open it.
-To turn that off:
-
-Open **Task Manager**, go to the **Startup apps** tab, find **Screen Timer**,
-and click **Disable**. It won't turn itself back on.
+To turn that off, switch **Start with Windows** to Off in settings. Or open
+**Task Manager**, go to the **Startup apps** tab, find **Screen Timer**, and
+click **Disable**. Either way, it won't turn itself back on.
 
 ### Uninstalling
 
@@ -166,7 +173,7 @@ how to verify that yourself.
 ## What's actually inside
 
 Fair enough if you'd like to check before running a download. Here's everything:
-about 1,200 lines of Python, plus roughly the same again for the window itself.
+about 1,900 lines of Python, plus about 1,500 for the window itself.
 
 **The two folders**
 
@@ -192,7 +199,7 @@ about 1,200 lines of Python, plus roughly the same again for the window itself.
 | `runtime.py` | The break countdown |
 | `paths.py` | Where files live, bundled vs. your own data |
 | `icons.py` | Pulls real icons out of other apps |
-| `icon_art.py` | Draws the orange badge |
+| `icon_art.py` | Draws the app icon |
 | `autostart.py` | The start-on-login setting |
 | `first_run.py` | First-launch setup |
 

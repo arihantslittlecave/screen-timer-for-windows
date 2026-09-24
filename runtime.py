@@ -6,6 +6,10 @@ countdown. Kept in its own module so neither side has to import the other.
 
 active_since_break = 0
 
+# The app window's handle, once it exists, so the API can tell whether anyone
+# is looking. None until main finds it; treated as "visible" until then.
+window_hwnd = None
+
 
 def add_active_seconds(seconds):
     global active_since_break

@@ -1,6 +1,13 @@
 import os
 import sys
 
+# Pillow 10.x imports numpy at load time purely for type hints, and numpy
+# commits ~350MB of math-library buffers the moment it loads. This app never
+# uses numpy; the packaged build already excludes it (see the spec), and
+# Pillow falls back cleanly on ImportError. Blocking it here gives a run from
+# source the same footprint as the build.
+sys.modules.setdefault("numpy", None)
+
 from paths import user_data_path
 
 
@@ -81,9 +88,8 @@ SAVE_INTERVAL_SECONDS = 10
 # enough that a brief lock at boot passes unremarked, short enough that a
 # genuinely stuck app is reported while the user is still at the machine.
 STALL_ALERT_SECONDS = 120
-TRAY_ICON_SIZE = 24  # under icon_art.TRACK_MIN_SIZE, so pystray gets the
-# already-simplified arc-only variant directly rather than a detailed 64px
-# image that Windows would then have to shrink itself for the actual tray slot
+TRAY_ICON_SIZE = 24  # drawn at tray size directly, rather than handing
+# pystray a large image that Windows would then have to shrink itself
 APP_NAME = "Screen Timer for Windows"
 # The window title doubles as the handle _focus_existing_instance() looks up
 # with FindWindow, so both sides must read it from here.
@@ -203,12 +209,18 @@ def _register_app_identity():
 
     icon_path = icon_art.write_ico()
     _icon_path = icon_path
-    _icon_uri = "file:///" + Path(icon_path).resolve().as_posix()
+
+    # The toast image and the AUMID's IconUri both just load one image file
+    # at face value rather than picking a frame out of a multi-size .ico, so
+    # they get a flat PNG instead — pointing them at the .ico left Windows
+    # picking whichever frame it felt like and upscaling it, blurry.
+    png_path = icon_art.write_png()
+    _icon_uri = "file:///" + Path(png_path).resolve().as_posix()
 
     key_path = f"Software\\Classes\\AppUserModelId\\{APP_USER_MODEL_ID}"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
         winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
-        winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, icon_path)
+        winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, png_path)
 
 
 # wParam values for WM_SETICON. Not in win32con, so named here rather than
@@ -229,10 +241,10 @@ def _apply_window_icon():
     Polls because create_window() returns before the native window exists, and
     gives up quietly: a missing icon is a cosmetic problem and must never be
     the reason startup fails.
-    """
-    if not _icon_path or not os.path.exists(_icon_path):
-        return
 
+    Also records the handle in runtime, which is how the API knows whether
+    the window is on screen or hidden in the tray.
+    """
     hwnd = None
     deadline = time.time() + 15
     while time.time() < deadline:
@@ -241,6 +253,10 @@ def _apply_window_icon():
             break
         time.sleep(0.25)
     if not hwnd:
+        return
+    runtime.window_hwnd = hwnd
+
+    if not _icon_path or not os.path.exists(_icon_path):
         return
 
     try:
@@ -254,8 +270,19 @@ def _apply_window_icon():
         log_info("window-icon-failed", traceback.format_exc())
 
 
+def _wake_ui():
+    """While hidden, the UI only checks every 30s whether it's visible yet.
+    Nudging it on show means opening the window never shows numbers up to
+    30s stale. Best-effort: the UI also wakes on focus and mouse movement."""
+    try:
+        window.evaluate_js("window.__stWake && window.__stWake()")
+    except Exception:
+        pass
+
+
 def on_open(icon_obj, item):
     window.show()
+    _wake_ui()
 
 
 def on_quit(icon_obj, item):
@@ -263,6 +290,12 @@ def on_quit(icon_obj, item):
     window.destroy()
     # No lock file to clean up: the mutex releases itself when this process
     # exits, which is the whole point of using one.
+
+
+def tray_title():
+    """Hover text for the tray icon, so a glance at the taskbar answers
+    "how much today?" without opening anything."""
+    return f"Screen Timer · {storage.format_hms(storage.get_today_total_seconds())} today"
 
 
 def build_menu():
@@ -440,6 +473,7 @@ def tracking_loop():
                     last_saved_at = time.time()
                 if icon:
                     icon.menu = build_menu()
+                    icon.title = tray_title()
 
             break_interval_seconds = storage.load_settings()["break_interval_minutes"] * 60
             if runtime.active_since_break >= break_interval_seconds:
@@ -518,9 +552,8 @@ def main():
         WINDOW_TITLE,
         ui_path,
         js_api=Api(),
-        # Widened from 370 for the card-based layout: two stat tiles side by
-        # side and a 31-bar month chart both need more breathing room than
-        # the previous single-column design did.
+        # Wide enough for a 7-column calendar and week chart with readable
+        # labels; tall enough that the Day tab fits without scrolling.
         width=420,
         height=760,
         min_size=(360, 520),
@@ -533,9 +566,11 @@ def main():
         return False
 
     window.events.closing += on_closing
+    window.events.restored += _wake_ui
+    window.events.shown += _wake_ui
 
     icon = pystray.Icon(
-        "screen-timer", icon_art.make_badge(TRAY_ICON_SIZE), APP_NAME, build_menu()
+        "screen-timer", icon_art.make_badge(TRAY_ICON_SIZE), tray_title(), build_menu()
     )
 
     def run_tray():

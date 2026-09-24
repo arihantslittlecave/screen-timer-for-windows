@@ -3,85 +3,100 @@
 <head>
   <meta charset="UTF-8" />
   <title>Screen Timer for Windows</title>
-  <link rel="stylesheet" href="style.css?v=60" />
+  <link rel="stylesheet" href="style.css?v=70" />
 </head>
 <body>
-  <div class="device">
-    <header class="brand">
-      <span class="brand-mark">
-        <!-- Three ascending bars: an at-a-glance analytics mark, not an
-             abstract badge. Blue on black, per the current identity. -->
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <rect x="3" y="14" width="5" height="7" rx="1" />
-          <rect x="9.5" y="9" width="5" height="12" rx="1" />
-          <rect x="16" y="3" width="5" height="18" rx="1" />
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <!-- Same mark as the app icon (icon_art.py): one bold arc,
+               three quarters round, round ends. -->
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="6.2" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"
+                    stroke-dasharray="29.2 9.8" transform="rotate(-90 12 12)" />
+          </svg>
+        </span>
+        <span class="brand-name">Screen Timer</span>
+      </div>
+      <button class="icon-btn" type="button" data-action="open-settings" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
         </svg>
-      </span>
-      <span class="brand-name">Screen Timer</span>
+      </button>
     </header>
 
-    <div class="bento-row">
-      <div class="bento-col">
-        <div class="bento-label">Today</div>
-        <div class="bento-value" id="today-value">0m</div>
-        <div class="bento-sub" id="today-sub"></div>
-        <div class="bento-break" id="break-row">
-          Next break <span class="accent" id="break-time">in --</span>
-          &nbsp;·&nbsp;
-          <button class="text-link" id="snooze-btn" type="button">Snooze</button>
+    <main id="main-view">
+      <div class="tabs" role="tablist" aria-label="Time range">
+        <button role="tab" type="button" data-action="tab" data-kind="day" aria-selected="true">Day</button>
+        <button role="tab" type="button" data-action="tab" data-kind="week" aria-selected="false" tabindex="-1">Week</button>
+        <button role="tab" type="button" data-action="tab" data-kind="month" aria-selected="false" tabindex="-1">Month</button>
+        <button role="tab" type="button" data-action="tab" data-kind="all" aria-selected="false" tabindex="-1">All time</button>
+      </div>
+
+      <section class="hero">
+        <div class="period-row">
+          <!-- Announced when you move to another day/week/month, not on every
+               10-second tick of the numbers below it. -->
+          <h1 class="period-title" id="period-title" aria-live="polite">Today</h1>
+          <div class="period-nav" id="period-nav">
+            <button class="icon-btn small" type="button" data-action="prev" id="prev-btn" aria-label="Previous" title="Previous">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+            </button>
+            <button class="icon-btn small" type="button" data-action="next" id="next-btn" aria-label="Next" title="Next">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="big" id="big">&nbsp;</div>
+        <p class="line" id="line1"></p>
+        <p class="line" id="line2"></p>
+        <div id="today-extras"></div>
+      </section>
+
+      <section class="stats hidden" id="stats"></section>
+      <section class="card hidden" id="chart"></section>
+
+      <section class="card">
+        <h2 class="section-title">Most used</h2>
+        <div id="app-list"></div>
+      </section>
+    </main>
+
+    <section id="settings-view" class="hidden" aria-labelledby="settings-title">
+      <div class="settings-head">
+        <button class="icon-btn small" type="button" data-action="close-settings" aria-label="Back" title="Back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        </button>
+        <h1 class="period-title" id="settings-title">Settings</h1>
+      </div>
+
+      <div class="card">
+        <div class="setting">
+          <div class="setting-name" id="break-label">Break reminder</div>
+          <p class="setting-help">A nudge to rest your eyes after this much screen time.</p>
+          <div class="options" id="break-options" role="group" aria-labelledby="break-label"></div>
+        </div>
+        <div class="setting">
+          <div class="setting-row">
+            <label class="setting-name" for="goal-select">Daily limit</label>
+            <select class="select" id="goal-select"></select>
+          </div>
+          <p class="setting-help">You'll get a notification when today's total goes past this.</p>
+        </div>
+        <div class="setting">
+          <div class="setting-row">
+            <div class="setting-name" id="login-label">Start with Windows</div>
+            <div class="options" id="login-options" role="group" aria-labelledby="login-label"></div>
+          </div>
+          <p class="setting-help">Starts counting by itself when you sign in.</p>
         </div>
       </div>
-      <div class="bento-col">
-        <div class="bento-label" id="month-context-label">This month</div>
-        <div class="bento-value" id="avg-value">0m</div>
-        <div class="bento-sub" id="month-sub">per day</div>
-      </div>
-    </div>
-
-    <section class="tile">
-      <div class="tile-header">
-        <span class="tile-title">History</span>
-        <div class="month-nav">
-          <button class="chev" id="month-prev" type="button" aria-label="Previous month">&#8249;</button>
-          <span class="month-label" id="month-label">—</span>
-          <button class="chev" id="month-next" type="button" aria-label="Next month">&#8250;</button>
-        </div>
-      </div>
-
-      <div class="cal-weekdays">
-        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-      </div>
-      <div class="cal-grid" id="cal-grid"></div>
-    </section>
-
-    <section class="tile">
-      <div class="apps-scope">
-        <button class="text-link active" id="scope-day" type="button">Today</button>
-        <button class="text-link" id="scope-month" type="button">This month</button>
-        <span class="apps-total" id="apps-total"></span>
-      </div>
-      <div id="app-list"></div>
-      <button class="text-link see-more hidden" id="show-more-apps" type="button"></button>
-    </section>
-
-    <section class="tile">
-      <div class="setting-row">
-        <span class="setting-label">Break every</span>
-        <div class="text-options" id="break-segment" data-value="30">
-          <button class="text-link" type="button" data-value="15">15m</button>
-          <button class="text-link" type="button" data-value="30">30m</button>
-          <button class="text-link" type="button" data-value="45">45m</button>
-          <button class="text-link" type="button" data-value="60">60m</button>
-          <button class="text-link" type="button" data-value="90">90m</button>
-        </div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Daily limit</span>
-        <select class="select-input" id="goal-select"></select>
-      </div>
-      <div class="save-status" id="save-status"></div>
+      <p class="save-status" id="save-status" role="status"></p>
+      <p class="footnote">Everything stays on this computer. Nothing is ever uploaded.</p>
     </section>
   </div>
-  <script src="app.js?v=60"></script>
+  <script src="app.js?v=70"></script>
 </body>
 </html>

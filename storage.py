@@ -167,19 +167,48 @@ class StoreUnreadable(Exception):
     """
 
 
+# path -> ((mtime_ns, size), parsed). The tracking loop reads settings every
+# second and a single UI refresh used to parse data.json half a dozen times;
+# all of that now costs one os.stat unless the file actually changed.
+_read_cache = {}
+
+
+def _read_json_cached(path):
+    """Parsed contents of `path`, re-read only when its mtime or size changes.
+
+    The returned object is shared between callers, so it must be treated as
+    read-only. Writers never use this: they read fresh, so an unsaved
+    in-memory change can never leak into the cache and get written twice.
+    """
+    st = os.stat(path)
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _read_cache.get(path)
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
+    with open(path, "r") as f:
+        value = json.load(f)
+    _read_cache[path] = (stamp, value)
+    return value
+
+
 def load_data(default_on_error=True):
     """Reads the history file.
 
     default_on_error=True is for read-only callers, where showing an empty
-    day briefly is harmless and better than an error. Anything that writes
-    back must pass False, so a failed read raises instead of silently looking
-    like an empty history.
+    day briefly is harmless and better than an error. Those get the cached,
+    shared copy and must not modify it. Anything that writes back must pass
+    False, which reads fresh from disk and raises on failure instead of
+    silently looking like an empty history.
     """
     if not os.path.exists(DATA_FILE):
         return {}
     try:
+        if default_on_error:
+            return _read_json_cached(DATA_FILE)
         with open(DATA_FILE, "r") as f:
             return json.load(f)
+    except FileNotFoundError:
+        return {}
     except OSError as exc:
         # Locked, busy, permission denied: transient by nature, so the caller
         # should back off and retry rather than act on a wrong answer.
@@ -203,11 +232,12 @@ def save_data(data):
 def _normalize_day(day):
     """Old format stored a plain int of seconds; new format is {total, apps}.
     A day with no entry yet arrives as {} (from data.get(key, {})) — dict, but
-    missing both keys, so it needs the same backfill as the old-int case."""
+    missing both keys, so it needs the same backfill as the old-int case.
+
+    Builds a new dict rather than filling in the one passed in: that one is
+    usually the shared cached copy, which readers must not modify."""
     if isinstance(day, dict):
-        day.setdefault("total", 0)
-        day.setdefault("apps", {})
-        return day
+        return {"total": day.get("total", 0), "apps": day.get("apps", {})}
     return {"total": day if isinstance(day, int) else 0, "apps": {}}
 
 
@@ -223,12 +253,14 @@ def add_active_seconds(process_seconds):
     today = today_str()
     data = load_data(default_on_error=False)
     day = _normalize_day(data.get(today, {}))
+    total = day["total"]
+    apps = dict(day["apps"])
 
     for process_name, seconds in process_seconds.items():
-        day["total"] = day.get("total", 0) + seconds
-        day["apps"][process_name] = day["apps"].get(process_name, 0) + seconds
+        total += seconds
+        apps[process_name] = apps.get(process_name, 0) + seconds
 
-    data[today] = day
+    data[today] = {"total": total, "apps": apps}
     save_data(data)
 
 
@@ -275,30 +307,25 @@ def today_str():
     return latest if gap <= MAX_CLOCK_SLIP_DAYS else computed
 
 
-def get_day_total_seconds(day_str=None):
-    day = _normalize_day(load_data().get(day_str or today_str(), {}))
-    return day.get("total", 0)
-
-
-def get_day_apps(day_str=None):
-    day = _normalize_day(load_data().get(day_str or today_str(), {}))
-    return day.get("apps", {})
-
-
 def get_today_total_seconds():
-    return get_day_total_seconds()
+    return _normalize_day(load_data().get(today_str(), {}))["total"]
 
 
 def get_today_apps():
-    return get_day_apps()
+    return _normalize_day(load_data().get(today_str(), {}))["apps"]
 
 
 def load_app_paths(default_on_error=True):
+    """Cached and shared when default_on_error=True, so read-only there."""
     if not os.path.exists(PATHS_FILE):
         return {}
     try:
+        if default_on_error:
+            return _read_json_cached(PATHS_FILE)
         with open(PATHS_FILE, "r") as f:
             return json.load(f)
+    except FileNotFoundError:
+        return {}
     except (json.JSONDecodeError, OSError) as exc:
         if default_on_error:
             return {}
@@ -317,25 +344,17 @@ def remember_app_paths(new_paths):
     to suggest the path is simply stale. Observed paths come from the running
     process, so the newest one seen is always the correct one.
     """
+    # This runs on every 10-second flush and almost always has nothing new;
+    # checking the cached copy first skips the fresh read in that common case.
+    cached = load_app_paths()
+    if all(cached.get(name) == path for name, path in new_paths.items()):
+        return
     known = load_app_paths(default_on_error=False)
     changed = {name: path for name, path in new_paths.items() if known.get(name) != path}
     if not changed:
         return
     known.update(changed)
     _atomic_write_json(PATHS_FILE, known)
-
-
-def previous_day_str(day_str):
-    return str(date.fromisoformat(day_str) - timedelta(days=1))
-
-
-def friendly_day_label(day_str):
-    delta_days = (date.today() - date.fromisoformat(day_str)).days
-    if delta_days == 0:
-        return "Today"
-    if delta_days == 1:
-        return "Yesterday"
-    return date.fromisoformat(day_str).strftime("%a %d %b")
 
 
 def friendly_app_name(process_name):
@@ -350,7 +369,7 @@ def format_hms(total_seconds):
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     if hours:
-        return f"{hours}h {minutes}m"
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
     return f"{minutes}m"
 
 
@@ -361,11 +380,16 @@ def load_settings(default_on_error=True):
     if not os.path.exists(SETTINGS_FILE):
         return dict(DEFAULT_SETTINGS)
     try:
-        with open(SETTINGS_FILE, "r") as f:
-            settings = json.load(f)
+        if default_on_error:
+            settings = _read_json_cached(SETTINGS_FILE)
+        else:
+            with open(SETTINGS_FILE, "r") as f:
+                settings = json.load(f)
         merged = dict(DEFAULT_SETTINGS)
         merged.update(settings)
         return merged
+    except FileNotFoundError:
+        return dict(DEFAULT_SETTINGS)
     except (json.JSONDecodeError, OSError) as exc:
         if default_on_error:
             return dict(DEFAULT_SETTINGS)
@@ -391,9 +415,8 @@ def set_app_limit(process_name, minutes):
 def earliest_recorded_date():
     """The oldest date key in the store, or None if it's empty.
 
-    Used to bound month navigation: without this, "previous month" has no
-    natural floor and a new user could arrow back into years of empty months
-    with nothing to look at.
+    Bounds the "previous" arrow: without it there is no natural floor, and a
+    new user could arrow back into years of empty periods.
     """
     data = load_data()
     if not data:
@@ -401,61 +424,37 @@ def earliest_recorded_date():
     return min(data)
 
 
-def _month_bounds(year, month):
-    """(first_of_month, last_of_month) as date objects."""
-    first = date(year, month, 1)
-    last = date(year, month, calendar.monthrange(year, month)[1])
-    return first, last
+def month_bounds(anchor):
+    """(first, last) day of the calendar month containing `anchor`."""
+    first = anchor.replace(day=1)
+    return first, first.replace(day=calendar.monthrange(first.year, first.month)[1])
 
 
-def _prev_month(year, month):
-    return (year - 1, 12) if month == 1 else (year, month - 1)
+def days_between(first, last):
+    """One entry per calendar day from `first` to `last` inclusive, oldest
+    first — always the full range, never truncated at today.
 
-
-def can_go_prev_month(year, month):
-    earliest = earliest_recorded_date()
-    if not earliest:
-        return False
-    earliest_ym = (int(earliest[:4]), int(earliest[5:7]))
-    return _prev_month(year, month) >= earliest_ym
-
-
-def can_go_next_month(year, month):
-    """Never past the calendar month containing today — there is nothing to
-    show for a month that hasn't happened yet, and letting the arrow advance
-    into it would just be an empty chart with no way back without noticing."""
-    today = date.today()
-    return (year, month) < (today.year, today.month)
-
-
-def get_month_days(year, month):
-    """One entry per day of the month, oldest first — always the FULL
-    calendar month (28-31 entries), never truncated.
-
-    Truncating the current month at today used to mean August showed 31 cells
-    and September showed 19, with nothing to explain why the grid was a
-    different shape from one month to the next. A real calendar doesn't
-    truncate either: it shows the whole month and leaves the future blank.
-    isFuture marks those cells so the UI can render them empty and
-    unclickable without needing to guess "today" itself client-side.
+    Truncating the current month at today once meant August showed 31 cells
+    and September 19, with nothing to explain why the grid changed shape. A
+    real calendar shows the whole range and leaves the future blank; isFuture
+    marks those days so the UI never has to work out "today" itself.
     """
     data = load_data()
-    first, last = _month_bounds(year, month)
-    today = date.today()
-
+    today = date.fromisoformat(today_str())
     days = []
     d = first
     while d <= last:
         key = str(d)
-        day = _normalize_day(data.get(key, {}))
+        seconds = _normalize_day(data.get(key, {}))["total"]
         days.append(
             {
                 "date": key,
                 "dayNum": d.day,
                 "weekday": d.strftime("%a"),
-                "seconds": day.get("total", 0),
-                "label": format_hms(day.get("total", 0)),
-                "isToday": key == str(today),
+                "weekdayIndex": d.weekday(),  # 0 = Monday
+                "seconds": seconds,
+                "label": format_hms(seconds),
+                "isToday": d == today,
                 "isFuture": d > today,
             }
         )
@@ -463,19 +462,19 @@ def get_month_days(year, month):
     return days
 
 
-def get_month_apps(year, month):
-    """process_name -> total seconds, summed across every day in the month."""
-    data = load_data()
-    first, last = _month_bounds(year, month)
+def apps_between(first, last):
+    """process_name -> seconds, summed over every recorded day in range."""
+    lo, hi = str(first), str(last)
     totals = {}
-    d = first
-    while d <= last:
-        day = _normalize_day(data.get(str(d), {}))
-        for name, secs in day.get("apps", {}).items():
-            totals[name] = totals.get(name, 0) + secs
-        d += timedelta(days=1)
+    for key, day in load_data().items():
+        if lo <= key <= hi:  # ISO dates sort the same as the dates they name
+            for name, secs in _normalize_day(day)["apps"].items():
+                totals[name] = totals.get(name, 0) + secs
     return totals
 
 
-def month_label(year, month):
-    return date(year, month, 1).strftime("%B %Y")
+def recorded_days():
+    """(date_str, total_seconds) for every day with anything recorded,
+    oldest first."""
+    rows = ((key, _normalize_day(day)["total"]) for key, day in load_data().items())
+    return sorted(row for row in rows if row[1] > 0)

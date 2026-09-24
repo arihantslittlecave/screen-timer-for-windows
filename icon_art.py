@@ -1,46 +1,33 @@
-"""Draws the Screen Timer app mark: a rounded orange badge (brand F28C28)
-with a white timer ring.
+"""Draws the Screen Timer app mark: a flat black badge with one bold blue
+arc — a timer three-quarters of the way round.
 
 Run directly to (re)generate assets/icon.ico for the tray and the packaged .exe.
 """
 
+import math
 import os
 
 from PIL import Image, ImageDraw
 
 from paths import user_data_path
 
-MASTER = 1024
-SUPERSAMPLE = 2  # drawn large, downsampled — PIL has no anti-aliased primitives
+SUPERSAMPLE = 4  # drawn large, downsampled — PIL has no anti-aliased primitives
 
-# Brand orange F28C28, bracketed +-15% toward white/black for the gradient.
-ACCENT_TOP = (244, 157, 72)
-ACCENT_BOTTOM = (206, 119, 34)
+# Flat black badge, brand blue 5AA3FF arc — same pairing as the in-app mark.
+BADGE_COLOR = (0, 0, 0)
+RING_COLOR = (90, 163, 255)
 
 CORNER_RATIO = 0.235
 RING_DIAMETER_RATIO = 0.60
-RING_STROKE_RATIO = 0.125
-ARC_START, ARC_END = -90, 170  # leaves a gap so the mark reads as progress, not a dot
-TRACK_ALPHA = 90
-TRACK_MIN_SIZE = 32  # below this the faint track muddies the glyph, so it's dropped
+# Heavy on purpose: the mark lives mostly at 16-24px (tray, taskbar,
+# notifications), where a thin ring or a faint second tone blurs to mush.
+RING_STROKE_RATIO = 0.135
+# Degrees, clockwise from 3 o'clock: starts at 12, stops at 9 — a quarter
+# gap, so it reads as time running rather than as a letter O.
+ARC_START, ARC_END = -90, 180
 ICO_SIZES = [16, 20, 24, 32, 48, 64, 128, 256]
 
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-
-
-def _vertical_gradient(size, top, bottom):
-    column = Image.new("RGB", (1, size))
-    for y in range(size):
-        t = y / max(size - 1, 1)
-        column.putpixel(
-            (0, y),
-            (
-                round(top[0] + (bottom[0] - top[0]) * t),
-                round(top[1] + (bottom[1] - top[1]) * t),
-                round(top[2] + (bottom[2] - top[2]) * t),
-            ),
-        )
-    return column.resize((size, size), Image.NEAREST)
 
 
 def make_badge(size=256):
@@ -53,22 +40,29 @@ def make_badge(size=256):
     )
 
     badge = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    badge.paste(_vertical_gradient(canvas, ACCENT_TOP, ACCENT_BOTTOM), (0, 0), mask)
+    flat = Image.new("RGB", (canvas, canvas), BADGE_COLOR)
+    badge.paste(flat, (0, 0), mask)
 
     ring = canvas * RING_DIAMETER_RATIO
     inset = (canvas - ring) / 2
     box = (inset, inset, canvas - inset, canvas - inset)
     stroke = round(canvas * RING_STROKE_RATIO)
 
-    # Drawn on its own layer so the semi-transparent track blends with the
-    # gradient instead of punching through it.
-    overlay = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    pen = ImageDraw.Draw(overlay)
-    if size >= TRACK_MIN_SIZE:
-        pen.ellipse(box, outline=(255, 255, 255, TRACK_ALPHA), width=stroke)
-    pen.arc(box, ARC_START, ARC_END, fill=(255, 255, 255, 255), width=stroke)
+    pen = ImageDraw.Draw(badge)
+    pen.arc(box, ARC_START, ARC_END, fill=RING_COLOR, width=stroke)
 
-    return Image.alpha_composite(badge, overlay).resize((size, size), Image.LANCZOS)
+    # Round caps: PIL's arc ends square, which at small sizes reads as a
+    # rendering glitch. A dot on the stroke's centre line at each end rounds
+    # them, matching the in-app SVG's stroke-linecap="round".
+    centre = canvas / 2
+    mid_radius = ring / 2 - stroke / 2
+    cap = stroke / 2
+    for angle in (ARC_START, ARC_END):
+        x = centre + mid_radius * math.cos(math.radians(angle))
+        y = centre + mid_radius * math.sin(math.radians(angle))
+        pen.ellipse((x - cap, y - cap, x + cap, y + cap), fill=RING_COLOR)
+
+    return badge.resize((size, size), Image.LANCZOS)
 
 
 def write_ico(path=None):
@@ -81,6 +75,18 @@ def write_ico(path=None):
     # than being downscaled from one master by the ICO writer.
     frames = [make_badge(s) for s in ICO_SIZES]
     frames[-1].save(path, format="ICO", sizes=[(s, s) for s in ICO_SIZES], append_images=frames[:-1])
+    return path
+
+
+def write_png(path=None, size=256):
+    """A single flat PNG for consumers that load one image at face value —
+    the toast notification and the AUMID registry IconUri — rather than
+    picking a frame out of a multi-size .ico. Handing those a plain PNG is
+    what keeps the notification badge crisp instead of upscaled from
+    whichever frame Windows happened to grab."""
+    path = path or user_data_path("icon.png")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    make_badge(size).save(path)
     return path
 
 

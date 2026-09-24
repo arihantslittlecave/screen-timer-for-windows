@@ -1,457 +1,580 @@
-const REFRESH_MS = 5000;
-const COLLAPSED_APP_COUNT = 4;
-const LIMIT_MAX_HOURS = 23; // pairs with 5-minute steps up to :55, so max is 23h 55m
-const GOAL_HOUR_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1); // 1h..16h
+"use strict";
 
-const ICONS = {
-  limit: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg>',
-};
+// Data on disk only changes every 10s (the tracker's save interval), so
+// asking more often than that just repeats work.
+const VISIBLE_POLL_MS = 10000;
+// While the window is hidden in the tray, the only call is a cheap
+// "am I visible yet?" check. Opening the window wakes the UI immediately
+// (Python nudges it, and so does any focus or mouse movement).
+const HIDDEN_POLL_MS = 30000;
+const COLLAPSED_APPS = 5;
+const LIMIT_MAX_HOURS = 23;
+const BREAK_OPTIONS = [15, 30, 45, 60, 90];
+const GOAL_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
 const state = {
-  month: { year: null, month: null }, // resolved from the first response
-  selectedDay: null, // a date string, or null meaning "today"
-  scope: "day", // "day" (selectedDay, or today if none picked) | "month" (the displayed month's aggregate)
+  kind: "day", // day | week | month | all
+  anchor: null, // ISO date inside the shown period; null = the current one
+  settingsOpen: false,
   appsExpanded: false,
-  limitEditorFor: null, // processName of the row with its editor open — one Apps panel now, one slot
+  limitEditorFor: null, // processName whose limit editor is open
+  hidden: false,
+  live: null, // get_state()
+  period: null, // get_period()
+  periodKey: null,
 };
 
-// The 5s poll would otherwise rebuild these on every tick, dropping hover
-// state and flickering. Re-render only when the data actually changed.
-const lastRender = { calendar: null, apps: null };
+const iconCache = new Map(); // processName -> data URI or null
+const $ = (id) => document.getElementById(id);
+const api = () => window.pywebview.api;
+const periodKey = () => `${state.kind}|${state.anchor || ""}`;
 
-function el(html) {
-  const t = document.createElement("template");
-  t.innerHTML = html.trim();
-  return t.content.firstChild;
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) =>
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
   );
 }
 
-function minutesLabel(minutes) {
+// Rewrites an element only when its content actually changed, so the
+// 10-second refresh doesn't knock hover or focus off whatever you're on.
+function setHTML(el, html) {
+  if (el.__html === html) return;
+  el.__html = html;
+  el.innerHTML = html;
+}
+
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function hoursLabel(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (!h) return `${m}m`;
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-// Date-only ISO strings ("2026-09-16") are UTC midnight by the JS Date spec,
-// so parsing one with `new Date(str)` and then formatting in a negative-UTC
-// timezone can print the day before. These strings represent a LOCAL
-// calendar day chosen by Python's date.today(), so they must be built as
-// local midnight instead — the two-argument-free Date(y, m, d) constructor
-// does that.
-function parseIsoDate(str) {
-  const [y, m, d] = str.split("-").map(Number);
-  return new Date(y, m - 1, d);
+function heatLevel(seconds) {
+  if (seconds <= 0) return 0;
+  const hours = seconds / 3600;
+  if (hours < 2) return 1;
+  if (hours < 4) return 2;
+  if (hours < 6) return 3;
+  if (hours < 8) return 4;
+  return 5;
 }
 
-function shortDate(str) {
-  return parseIsoDate(str).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+// ---- refresh scheduling: one refresh at a time, never overlapping ----
+
+let timer = null;
+let running = false;
+let rerun = false;
+
+async function refresh() {
+  if (running) {
+    rerun = true;
+    return;
+  }
+  running = true;
+  clearTimeout(timer);
+  let delay = VISIBLE_POLL_MS;
+  try {
+    do {
+      rerun = false;
+      delay = await refreshOnce();
+    } while (rerun);
+  } catch (err) {
+    console.error("refresh failed, will retry:", err);
+  } finally {
+    running = false;
+    timer = setTimeout(refresh, delay);
+  }
 }
 
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-// ---- calendar grid: real weeks, weekday-aligned, always the full month ----
-
-function renderCalendar(days, selectedDay) {
-  const key = JSON.stringify([days.map((d) => [d.date, d.seconds, d.isFuture]), selectedDay]);
-  if (lastRender.calendar === key) return;
-  lastRender.calendar = key;
-
-  const container = document.getElementById("cal-grid");
-  container.innerHTML = "";
-  if (!days.length) return;
-
-  const leading = parseIsoDate(days[0].date).getDay(); // 0=Sun..6=Sat
-  for (let i = 0; i < leading; i++) {
-    container.appendChild(el(`<div class="cal-cell blank"></div>`));
+async function refreshOnce() {
+  if (state.hidden) {
+    if (!(await api().is_visible())) return HIDDEN_POLL_MS;
+    state.hidden = false;
   }
 
-  days.forEach((d) => {
-    if (d.isFuture) {
-      container.appendChild(el(`<div class="cal-cell future">${d.dayNum}</div>`));
-      return;
+  const live = await api().get_state();
+  if (!live.visible) {
+    state.hidden = true;
+    return HIDDEN_POLL_MS;
+  }
+  state.live = live;
+
+  // A past week or month can't change, so it's fetched once; anything that
+  // includes today is refreshed so the numbers keep counting.
+  const key = periodKey();
+  if (state.periodKey !== key || !state.period || state.period.isCurrent) {
+    const period = await api().get_period(state.kind, state.anchor);
+    if (key !== periodKey()) {
+      rerun = true; // navigated while this was in flight; fetch the new one
+      return VISIBLE_POLL_MS;
     }
-    const classes = [
-      "cal-cell",
-      d.seconds > 0 ? "has-data" : "",
-      d.isToday ? "today" : "",
-      d.date === selectedDay ? "selected" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const cell = el(`<div class="${classes}" title="${escapeHtml(shortDate(d.date))} — ${escapeHtml(d.label)}">${d.dayNum}</div>`);
-    cell.addEventListener("click", () => {
-      state.selectedDay = state.selectedDay === d.date ? null : d.date;
-      state.scope = "day";
-      refresh();
-    });
-    container.appendChild(cell);
-  });
+    await loadIcons(period.apps);
+    state.period = period;
+    state.periodKey = key;
+  }
 
-  const trailing = (7 - (container.children.length % 7)) % 7;
-  for (let i = 0; i < trailing; i++) {
-    container.appendChild(el(`<div class="cal-cell blank"></div>`));
+  render();
+  return VISIBLE_POLL_MS;
+}
+
+function wake() {
+  if (!state.hidden && running) return;
+  state.hidden = false;
+  refresh();
+}
+
+window.__stWake = wake;
+
+async function loadIcons(apps) {
+  const missing = apps.map((a) => a.processName).filter((p) => !iconCache.has(p));
+  if (!missing.length) return;
+  try {
+    const found = await api().get_icons(missing);
+    missing.forEach((p) => iconCache.set(p, found[p] || null));
+  } catch (err) {
+    missing.forEach((p) => iconCache.set(p, null));
   }
 }
 
-// ---- app rows: one renderer, used by the single Apps panel ----
+// ---- navigation ----
 
-function renderAppRows(container, apps, { expanded, editorFor, onToggleEditor, moreBtn }) {
-  container.innerHTML = "";
+function go(kind, anchor = null) {
+  state.kind = kind;
+  state.anchor = anchor;
+  state.appsExpanded = false;
+  state.limitEditorFor = null;
+  renderTabs();
+  // Until the new period arrives, what's on screen belongs to the old one;
+  // dim it rather than let it pass for the answer.
+  $("main-view").classList.toggle("stale", state.periodKey !== periodKey());
+  refresh();
+}
 
-  if (!apps.length) {
-    container.appendChild(el(`<div class="empty-note">Nothing recorded.</div>`));
-    if (moreBtn) moreBtn.classList.add("hidden");
+function step(direction) {
+  const p = state.period;
+  // A period still loading has no arrows yet; the old one's would jump
+  // somewhere unrelated.
+  if (!p || state.settingsOpen || state.periodKey !== periodKey()) return;
+  const target = direction < 0 ? p.prevAnchor : p.nextAnchor;
+  if (target) go(state.kind, target);
+}
+
+// ---- rendering ----
+
+function render() {
+  renderTabs();
+  renderSettings();
+  const p = state.period;
+  if (!p) return;
+  $("main-view").classList.toggle("stale", state.periodKey !== periodKey());
+
+  setText($("period-title"), p.title);
+  $("period-nav").classList.toggle("hidden", p.kind === "all");
+  $("prev-btn").disabled = !p.prevAnchor;
+  $("next-btn").disabled = !p.nextAnchor;
+  setText($("big"), p.totalLabel);
+
+  renderLines(p);
+  renderTodayExtras(p);
+  renderChart(p);
+  renderStats(p);
+  renderApps(p);
+}
+
+function renderTabs() {
+  document.querySelectorAll('[role="tab"]').forEach((tab) => {
+    const selected = tab.dataset.kind === state.kind;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  $("main-view").classList.toggle("hidden", state.settingsOpen);
+  $("settings-view").classList.toggle("hidden", !state.settingsOpen);
+}
+
+function compareHTML(c, perDay) {
+  if (!c) return "";
+  if (c.direction === "same") return `About the same as ${esc(c.against)}`;
+  const up = c.direction === "up";
+  const amount = perDay ? `${esc(c.label)} a day` : esc(c.label);
+  return (
+    `<span class="${up ? "up" : "down"}" aria-hidden="true">${up ? "▲" : "▼"}</span> ` +
+    `${amount} ${up ? "more" : "less"} than ${esc(c.against)}`
+  );
+}
+
+function renderLines(p) {
+  let one = "";
+  let two = "";
+  if (p.kind === "day") {
+    if (!p.totalSeconds) one = "Nothing tracked yet.";
+    else if (p.previousLabel) one = `Yesterday you spent ${esc(p.previousLabel)}`;
+    else one = compareHTML(p.compare, false);
+  } else if (p.kind === "all") {
+    one = p.activeDays ? `${p.activeDays} ${p.activeDays === 1 ? "day" : "days"} tracked` : "Nothing tracked yet.";
+  } else {
+    one = p.activeDays ? `${esc(p.avgLabel)} a day on average` : "Nothing tracked yet.";
+    two = compareHTML(p.compare, true);
+  }
+  setHTML($("line1"), one);
+  setHTML($("line2"), two);
+}
+
+function renderTodayExtras(p) {
+  const live = state.live;
+  if (p.kind !== "day" || !live) {
+    setHTML($("today-extras"), "");
     return;
   }
 
-  const canCollapse = apps.length - COLLAPSED_APP_COUNT >= 2;
-  const hidden = canCollapse ? apps.length - COLLAPSED_APP_COUNT : 0;
-  const visible = expanded || !canCollapse ? apps : apps.slice(0, COLLAPSED_APP_COUNT);
-
-  if (moreBtn) {
-    moreBtn.classList.toggle("hidden", hidden <= 0);
-    moreBtn.textContent = expanded ? "Show less" : `Show ${hidden} more`;
+  let html = "";
+  if (live.goalSeconds > 0) {
+    const pct = Math.round((p.totalSeconds / live.goalSeconds) * 100);
+    const over = p.totalSeconds > live.goalSeconds;
+    const goal = hoursLabel(Math.round(live.goalSeconds / 60));
+    const text = over
+      ? `<span class="warn">Over your ${goal} daily limit</span>`
+      : `<strong>${pct}%</strong> of your ${goal} daily limit`;
+    html +=
+      `<div class="limit">` +
+      `<div class="track${over ? " over" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="100" ` +
+      `aria-valuenow="${Math.min(pct, 100)}" aria-label="Daily limit used"><span style="width:${Math.min(pct, 100)}%"></span></div>` +
+      `<div class="limit-text">${text}</div></div>`;
   }
-
-  const maxSeconds = Math.max(...apps.map((a) => a.seconds), 1);
-
-  visible.forEach((a, i) => {
-    const name = escapeHtml(a.name);
-    const glyph = a.icon
-      ? `<img class="app-icon" src="${a.icon}" alt="" />`
-      : `<span class="app-fallback">${escapeHtml(a.name.charAt(0).toUpperCase())}</span>`;
-
-    const limitBadge = a.limitExceeded
-      ? '<span class="over-tag">Over</span>'
-      : a.limitMinutes
-      ? `<span class="limit-note">of ${escapeHtml(minutesLabel(a.limitMinutes))}</span>`
-      : "";
-
-    const pct = Math.round((a.seconds / maxSeconds) * 100);
-    const op = i === 0 ? 1 : 0.6;
-
-    const wrap = el(`
-      <div class="app-row-wrap">
-        <div class="app-row" title="${name} — ${escapeHtml(a.label)}">
-          <span class="app-icon-wrap">${glyph}</span>
-          <div class="app-main">
-            <div class="app-name">${name}</div>
-            <div class="app-bar"><span class="app-bar-fill" style="--pct:${pct}%; --op:${op}"></span></div>
-          </div>
-          <div class="app-meta">
-            ${limitBadge}
-            <span class="app-time">${escapeHtml(a.label)}</span>
-            <button class="limit-btn" type="button" title="Set a daily limit for ${name}">${ICONS.limit}</button>
-          </div>
-        </div>
-      </div>
-    `);
-
-    wrap.querySelector(".limit-btn").addEventListener("click", () => onToggleEditor(a.processName));
-
-    if (editorFor === a.processName) {
-      wrap.appendChild(buildLimitEditor(a));
-    }
-
-    container.appendChild(wrap);
-  });
+  if (p.isCurrent) {
+    html +=
+      `<div class="break-row"><span>Next break in <strong>${esc(live.breakInLabel)}</strong></span>` +
+      `<button class="link" type="button" data-action="snooze">Snooze ${live.snoozeMinutes}m</button></div>`;
+  }
+  setHTML($("today-extras"), html);
 }
 
-// Hours/minutes picker + Cancel/OK, in place of fixed presets — 0h 0m via OK
-// clears the limit, same as set_app_limit already treats 0 as "no limit".
-function buildLimitEditor(app) {
-  const editor = el(`
-    <div class="limit-editor">
-      <span class="limit-editor-label">Daily limit for ${escapeHtml(app.name)}</span>
-      <div class="time-picker-row">
-        <select class="select-input time-picker-hours"></select>
-        <span class="time-picker-sep">h</span>
-        <select class="select-input time-picker-minutes"></select>
-        <span class="time-picker-sep">m</span>
-      </div>
-      <div class="limit-editor-actions">
-        ${app.limitMinutes ? '<button class="text-link" type="button" data-action="reset">Reset</button>' : "<span></span>"}
-        <div class="limit-editor-actions-right">
-          <button class="text-link" type="button" data-action="cancel">Cancel</button>
-          <button class="text-link accent" type="button" data-action="ok">OK</button>
-        </div>
-      </div>
-    </div>
-  `);
+function renderChart(p) {
+  const chart = $("chart");
+  let html = "";
+  if (p.kind === "week") html = weekChart(p);
+  else if (p.kind === "month") html = monthChart(p);
+  else if (p.kind === "all" && p.months.length) html = monthsList(p);
+  chart.classList.toggle("hidden", !html);
+  setHTML(chart, html);
+}
 
-  const hoursSelect = editor.querySelector(".time-picker-hours");
-  const minutesSelect = editor.querySelector(".time-picker-minutes");
-  hoursSelect.innerHTML = Array.from({ length: LIMIT_MAX_HOURS + 1 }, (_, h) => `<option value="${h}">${h}</option>`).join("");
-  minutesSelect.innerHTML = Array.from({ length: 12 }, (_, i) => i * 5)
-    .map((m) => `<option value="${m}">${m}</option>`)
+function weekChart(p) {
+  const goal = state.live ? state.live.goalSeconds : 0;
+  const most = Math.max(...p.days.map((d) => d.seconds), 1);
+  // Show the limit line only when it fits without squashing the bars flat.
+  const showGoal = goal > 0 && goal <= most * 1.5;
+  const scale = showGoal ? Math.max(most, goal) : most;
+  const SLOT = 120;
+
+  const bars = p.days
+    .map((d) => {
+      const height = d.seconds ? Math.max(4, Math.round((d.seconds / scale) * SLOT)) : 0;
+      const label = d.isFuture ? "" : d.seconds ? d.label : "–";
+      const aria = `${d.weekday} ${d.dayNum}: ${d.isFuture ? "not yet" : d.label}`;
+      return (
+        `<button class="bar${d.isToday ? " today" : ""}" type="button" data-action="goto" data-kind="day" ` +
+        `data-anchor="${d.date}" aria-label="${esc(aria)}" ${d.isFuture ? "disabled" : ""}>` +
+        `<span class="bar-value">${esc(label)}</span>` +
+        `<span class="bar-slot"><span class="bar-fill" style="height:${height}px"></span></span>` +
+        `<span class="bar-day">${esc(d.weekday)}</span></button>`
+      );
+    })
     .join("");
 
-  const current = app.limitMinutes || 0;
-  hoursSelect.value = Math.floor(current / 60);
-  // Round to the nearest 5-minute option so a pre-existing value doesn't
-  // leave the dropdown showing nothing selected.
-  minutesSelect.value = Math.round((current % 60) / 5) * 5;
-
-  const close = () => {
-    state.limitEditorFor = null;
-    refresh();
-  };
-
-  editor.querySelector('[data-action="cancel"]').addEventListener("click", close);
-  editor.querySelector('[data-action="ok"]').addEventListener("click", async () => {
-    const total = Number(hoursSelect.value) * 60 + Number(minutesSelect.value);
-    await window.pywebview.api.set_app_limit(app.processName, total);
-    close();
-  });
-  editor.querySelector('[data-action="reset"]')?.addEventListener("click", async () => {
-    await window.pywebview.api.set_app_limit(app.processName, 0);
-    close();
-  });
-
-  return editor;
+  // 16px value row + 6px gap sits above each slot; 6px gap + day row below.
+  const line = showGoal
+    ? `<div class="limit-line" aria-hidden="true" style="bottom:${Math.round((goal / scale) * SLOT) + 6 + 18}px">` +
+      `<span>${hoursLabel(Math.round(goal / 60))} limit</span></div>`
+    : "";
+  return `<div class="bars">${bars}${line}</div>`;
 }
 
-function setTextOptionActive(container, value) {
-  container.dataset.value = value;
-  [...container.children].forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.value === String(value));
-  });
+function monthChart(p) {
+  const head = ["M", "T", "W", "T", "F", "S", "S"].map((d) => `<span>${d}</span>`).join("");
+  const blanks = '<span class="cell blank"></span>'.repeat(p.days[0].weekdayIndex);
+  const cells = p.days
+    .map((d) => {
+      if (d.isFuture) return `<span class="cell future" aria-hidden="true">${d.dayNum}</span>`;
+      const level = heatLevel(d.seconds);
+      const cls = ["cell", level ? `h${level}` : "", d.isToday ? "today" : ""].filter(Boolean).join(" ");
+      const aria = `${d.weekday} ${d.dayNum}: ${d.seconds ? d.label : "nothing tracked"}`;
+      return (
+        `<button class="${cls}" type="button" data-action="goto" data-kind="day" data-anchor="${d.date}" ` +
+        `aria-label="${esc(aria)}" title="${esc(aria)}">${d.dayNum}</button>`
+      );
+    })
+    .join("");
+  const legend =
+    `<div class="legend" aria-hidden="true">Less` +
+    [1, 2, 3, 4, 5].map((n) => `<i style="background:var(--heat-${n})"></i>`).join("") +
+    `More</div>`;
+  return `<div class="cal-head" aria-hidden="true">${head}</div><div class="cal">${blanks}${cells}</div>${legend}`;
+}
+
+function monthsList(p) {
+  const most = Math.max(...p.months.map((m) => m.seconds), 1);
+  const rows = p.months
+    .map(
+      (m) =>
+        `<button class="month-row" type="button" data-action="goto" data-kind="month" data-anchor="${m.anchor}" ` +
+        `aria-label="${esc(m.title)}: ${esc(m.label)}">` +
+        `<span class="month-name">${esc(m.title)}</span>` +
+        `<span class="app-bar"><span style="width:${Math.round((m.seconds / most) * 100)}%"></span></span>` +
+        `<span class="month-time">${esc(m.label)}</span></button>`
+    )
+    .join("");
+  return `<h2 class="section-title">By month</h2><div class="months">${rows}</div>`;
+}
+
+function renderStats(p) {
+  const stats = $("stats");
+  let html = "";
+  if (p.kind === "all" && p.activeDays) {
+    const busiest = p.busiest
+      ? `<button class="stat" type="button" data-action="goto" data-kind="day" data-anchor="${p.busiest.date}">` +
+        `<div class="stat-label">Busiest day</div><div class="stat-value">${esc(p.busiest.label)}</div>` +
+        `<div class="stat-sub">${esc(p.busiest.title)}</div></button>`
+      : "";
+    html =
+      `<div class="stat"><div class="stat-label">Daily average</div><div class="stat-value">${esc(p.avgLabel)}</div>` +
+      `<div class="stat-sub">on a typical day</div></div>` +
+      busiest;
+  }
+  stats.classList.toggle("hidden", !html);
+  setHTML(stats, html);
+}
+
+function renderApps(p) {
+  const list = $("app-list");
+  // An open limit editor holds the user's half-made choice in its dropdowns;
+  // re-rendering would reset them mid-edit.
+  if (state.limitEditorFor && list.querySelector(".editor")) return;
+
+  if (!p.apps.length) {
+    const msg = p.kind === "day" && p.isCurrent ? "Nothing yet today. Apps show up here as you use them." : "Nothing tracked.";
+    setHTML(list, `<p class="empty">${msg}</p>`);
+    return;
+  }
+
+  const most = p.apps[0].seconds;
+  const collapsible = p.apps.length > COLLAPSED_APPS + 1;
+  const shown = state.appsExpanded || !collapsible ? p.apps : p.apps.slice(0, COLLAPSED_APPS);
+  const canLimit = p.kind === "day";
+
+  let html = shown.map((a) => appRow(a, most, canLimit)).join("");
+  if (collapsible) {
+    const label = p.appCount > p.apps.length ? `See top ${p.apps.length} apps` : `See all ${p.apps.length} apps`;
+    html += `<button class="link more" type="button" data-action="more-apps">${
+      state.appsExpanded ? "Show fewer" : label
+    }</button>`;
+  }
+  setHTML(list, html);
+}
+
+function appRow(a, most, canLimit) {
+  const icon = iconCache.get(a.processName);
+  const glyph = icon
+    ? `<img src="${icon}" alt="" />`
+    : `<span class="letter">${esc(a.name.charAt(0).toUpperCase())}</span>`;
+  let note = "";
+  if (canLimit && a.limitMinutes) {
+    note = a.limitExceeded
+      ? `<div class="app-note warn">Over its ${hoursLabel(a.limitMinutes)} limit</div>`
+      : `<div class="app-note">Limit ${hoursLabel(a.limitMinutes)} a day</div>`;
+  }
+  const limitBtn = canLimit
+    ? `<button class="icon-btn small" type="button" data-action="limit-open" data-proc="${esc(a.processName)}" ` +
+      `aria-label="Set a daily limit for ${esc(a.name)}" title="Set a daily limit">` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+      `<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg></button>`
+    : "";
+  const row =
+    `<div class="app-row"><span class="app-icon">${glyph}</span><div class="app-main">` +
+    `<div class="app-top"><span class="app-name">${esc(a.name)}</span><span class="app-time">${esc(a.label)}</span></div>` +
+    `<div class="app-bar"><span style="width:${Math.max(2, Math.round((a.seconds / most) * 100))}%"></span></div>` +
+    `${note}</div>${limitBtn}</div>`;
+  return state.limitEditorFor === a.processName ? row + limitEditor(a) : row;
+}
+
+function limitEditor(a) {
+  const current = a.limitMinutes || 0;
+  const hours = Array.from({ length: LIMIT_MAX_HOURS + 1 }, (_, h) =>
+    `<option value="${h}" ${h === Math.floor(current / 60) ? "selected" : ""}>${h}</option>`
+  ).join("");
+  const nearest = Math.round((current % 60) / 5) * 5;
+  const minutes = Array.from({ length: 12 }, (_, i) => i * 5)
+    .map((m) => `<option value="${m}" ${m === nearest ? "selected" : ""}>${m}</option>`)
+    .join("");
+  return (
+    `<div class="editor"><div class="editor-label">Daily limit for ${esc(a.name)}</div>` +
+    `<div class="editor-row"><select class="select" id="limit-hours" aria-label="Hours">${hours}</select>h ` +
+    `<select class="select" id="limit-minutes" aria-label="Minutes">${minutes}</select>m</div>` +
+    `<div class="editor-actions"><button class="link" type="button" data-action="limit-ok">Save</button>` +
+    `<button class="link quiet" type="button" data-action="limit-cancel">Cancel</button>` +
+    (a.limitMinutes ? `<button class="link quiet" type="button" data-action="limit-reset">Remove limit</button>` : "") +
+    `</div></div>`
+  );
+}
+
+function renderSettings() {
+  const live = state.live;
+  if (!live) return;
+  setHTML(
+    $("break-options"),
+    BREAK_OPTIONS.map(
+      (m) =>
+        `<button class="option" type="button" data-action="break" data-value="${m}" ` +
+        `aria-pressed="${m === live.breakMinutes}">${hoursLabel(m)}</button>`
+    ).join("")
+  );
+  setHTML(
+    $("login-options"),
+    [true, false]
+      .map(
+        (on) =>
+          `<button class="option" type="button" data-action="login" data-value="${on}" ` +
+          `aria-pressed="${on === live.startOnLogin}">${on ? "On" : "Off"}</button>`
+      )
+      .join("")
+  );
+  const select = $("goal-select");
+  if (document.activeElement !== select) {
+    select.value = String(Math.round(live.goalHours));
+  }
 }
 
 function populateGoalSelect() {
-  const select = document.getElementById("goal-select");
-  select.innerHTML = GOAL_HOUR_OPTIONS.map((h) => `<option value="${h}">${h}h</option>`).join("");
+  $("goal-select").innerHTML = GOAL_OPTIONS.map(
+    (h) => `<option value="${h}">${h ? `${h} hours` : "No limit"}</option>`
+  ).join("");
 }
 
-// ---- pulling state and rendering ----
+// ---- actions ----
 
-async function refreshToday() {
-  let data;
-  try {
-    data = await window.pywebview.api.get_state();
-  } catch (err) {
-    console.error("get_state() failed, will retry on next poll:", err);
-    return null;
-  }
-
-  document.getElementById("today-value").textContent = data.totalLabel;
-
-  const sub = document.getElementById("today-sub");
-  if (data.goalSeconds > 0) {
-    const pct = Math.round((data.totalSeconds / data.goalSeconds) * 100);
-    sub.innerHTML = data.goalExceeded
-      ? `<span class="accent">${pct}% of ${data.goalHours}h limit — over</span>`
-      : `${pct}% of ${data.goalHours}h limit`;
-  } else {
-    sub.textContent = "No daily limit set";
-  }
-  if (data.delta) {
-    const dir = data.delta.direction === "same" ? "about the same as" : `${data.delta.label} ${data.delta.direction === "up" ? "more" : "less"} than`;
-    sub.textContent += (sub.textContent ? " · " : "") + `${dir} yesterday`;
-  }
-
-  document.getElementById("break-time").textContent = `in ${data.breakInLabel}`;
-
-  setTextOptionActive(document.getElementById("break-segment"), data.breakMinutes);
-  const goalSelect = document.getElementById("goal-select");
-  if (document.activeElement !== goalSelect) {
-    goalSelect.value = String(Math.min(16, Math.max(1, Math.round(data.goalHours))));
-  }
-
-  return data;
-}
-
-async function refreshMonth() {
-  let data;
-  try {
-    data = await window.pywebview.api.get_month_state(
-      state.month.year || undefined,
-      state.month.month || undefined
-    );
-  } catch (err) {
-    console.error("get_month_state() failed, will retry on next poll:", err);
-    return null;
-  }
-
-  state.month = { year: data.year, month: data.month };
-
-  document.getElementById("month-label").textContent = data.monthLabel;
-  document.getElementById("month-prev").disabled = !data.canGoPrev;
-  document.getElementById("month-next").disabled = !data.canGoNext;
-
-  const today = todayStr();
-  const isRealCurrentMonth = data.monthLabel === parseIsoDate(today).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  document.getElementById("month-context-label").textContent = isRealCurrentMonth ? "This month" : data.monthLabel;
-  document.getElementById("avg-value").textContent = data.activeDays ? data.avgLabel : "0m";
-  document.getElementById("month-sub").textContent = data.activeDays ? `per day · ${data.totalLabel} total` : "no data yet";
-
-  renderCalendar(data.days, state.selectedDay);
-
-  return data;
-}
-
-async function refreshApps(todayData, monthData) {
-  const dayLabel = document.getElementById("scope-day");
-  const monthLabel = document.getElementById("scope-month");
-
-  dayLabel.classList.toggle("active", state.scope === "day");
-  monthLabel.classList.toggle("active", state.scope === "month");
-
-  const today = todayStr();
-  const viewingDay = state.selectedDay || today;
-  dayLabel.textContent = viewingDay === today ? "Today" : shortDate(viewingDay);
-
-  let apps, total, label, showTotal;
-
-  if (state.scope === "month") {
-    apps = monthData ? monthData.topApps : [];
-    total = monthData ? monthData.totalLabel : "";
-    showTotal = true;
-  } else {
-    // Only fetch a day's breakdown when needed: today's is already in
-    // get_state()'s topApps, so browsing "today" costs no extra call.
-    if (viewingDay === today) {
-      // Reuses refreshToday()'s already-fetched data rather than calling
-      // get_state() a second time in the same cycle.
-      apps = todayData ? todayData.topApps : [];
-      showTotal = false; // already shown in the Today bento tile — no repeat
-      total = "";
-    } else {
-      try {
-        const day = await window.pywebview.api.get_month_state(
-          state.month.year || undefined,
-          state.month.month || undefined,
-          viewingDay
-        );
-        apps = day.selected ? day.selected.topApps : [];
-        total = day.selected ? day.selected.totalLabel : "";
-      } catch (err) {
-        console.error("get_month_state(selected_day) failed:", err);
-        apps = [];
-        total = "";
-      }
-      showTotal = true;
-    }
-  }
-
-  document.getElementById("apps-total").textContent = showTotal ? total : "";
-
-  const key = JSON.stringify([
-    state.scope,
-    viewingDay,
-    apps.map((a) => [a.name, a.seconds, !!a.icon, a.limitMinutes, a.limitExceeded]),
-    state.appsExpanded,
-    state.limitEditorFor,
-  ]);
-  if (lastRender.apps !== key) {
-    lastRender.apps = key;
-    renderAppRows(document.getElementById("app-list"), apps, {
-      expanded: state.appsExpanded,
-      editorFor: state.limitEditorFor,
-      onToggleEditor: (name) => {
-        state.limitEditorFor = state.limitEditorFor === name ? null : name;
-        refresh();
-      },
-      moreBtn: document.getElementById("show-more-apps"),
-    });
-  }
-}
-
-async function refresh() {
-  const todayData = await refreshToday();
-  const monthData = await refreshMonth();
-  await refreshApps(todayData, monthData);
-}
-
+let savedTimer = null;
 function flashSaved() {
-  const status = document.getElementById("save-status");
+  const status = $("save-status");
   status.textContent = "Saved";
-  setTimeout(() => (status.textContent = ""), 1200);
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => (status.textContent = ""), 1500);
 }
 
-async function saveSettings() {
-  const breakMinutes = document.getElementById("break-segment").dataset.value;
-  const goalHours = document.getElementById("goal-select").value;
-  await window.pywebview.api.save_settings(breakMinutes, goalHours);
+async function saveSettings(breakMinutes, goalHours) {
+  await api().save_settings(breakMinutes, goalHours);
   flashSaved();
-  refresh(); // reflect the new goal/interval now rather than on the next poll
+  state.periodKey = null; // the limit shows in the Day view; refetch
+  refresh();
 }
 
-function initControls() {
-  document.getElementById("break-segment").addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    setTextOptionActive(e.currentTarget, btn.dataset.value);
-    saveSettings();
-  });
+async function closeLimitEditor(save) {
+  if (save !== undefined) await api().set_app_limit(state.limitEditorFor, save);
+  state.limitEditorFor = null;
+  state.periodKey = null;
+  $("app-list").__html = null;
+  refresh();
+}
 
-  document.getElementById("goal-select").addEventListener("change", saveSettings);
-
-  document.getElementById("snooze-btn").addEventListener("click", async () => {
-    await window.pywebview.api.snooze_break();
+const actions = {
+  tab: (el) => go(el.dataset.kind),
+  goto: (el) => go(el.dataset.kind, el.dataset.anchor),
+  prev: () => step(-1),
+  next: () => step(1),
+  snooze: async () => {
+    await api().snooze_break();
     refresh();
-  });
-
-  document.getElementById("show-more-apps").addEventListener("click", () => {
+  },
+  "more-apps": () => {
     state.appsExpanded = !state.appsExpanded;
-    lastRender.apps = null;
+    render();
+  },
+  "limit-open": (el) => {
+    const proc = el.dataset.proc;
+    state.limitEditorFor = state.limitEditorFor === proc ? null : proc;
+    $("app-list").__html = null;
+    render();
+    $("limit-hours")?.focus();
+  },
+  "limit-ok": () => closeLimitEditor(Number($("limit-hours").value) * 60 + Number($("limit-minutes").value)),
+  "limit-cancel": () => closeLimitEditor(),
+  "limit-reset": () => closeLimitEditor(0),
+  "open-settings": () => {
+    state.settingsOpen = true;
+    renderTabs();
+    document.querySelector('#settings-view [data-action="close-settings"]').focus();
+  },
+  "close-settings": () => {
+    state.settingsOpen = false;
+    renderTabs();
+    document.querySelector('[data-action="open-settings"]').focus();
+  },
+  break: (el) => saveSettings(Number(el.dataset.value), $("goal-select").value),
+  login: async (el) => {
+    await api().set_start_on_login(el.dataset.value === "true");
+    flashSaved();
     refresh();
-  });
+  },
+};
 
-  document.getElementById("scope-day").addEventListener("click", () => {
-    state.scope = "day";
-    lastRender.apps = null;
-    refresh();
-  });
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el || el.disabled) return;
+  const action = actions[el.dataset.action];
+  if (action) action(el);
+});
 
-  document.getElementById("scope-month").addEventListener("click", () => {
-    state.scope = "month";
-    lastRender.apps = null;
-    refresh();
-  });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (state.limitEditorFor) closeLimitEditor();
+    else if (state.settingsOpen) actions["close-settings"]();
+    return;
+  }
 
-  document.getElementById("month-prev").addEventListener("click", () => {
-    const m = state.month.month === 1 ? 12 : state.month.month - 1;
-    const y = state.month.month === 1 ? state.month.year - 1 : state.month.year;
-    state.month = { year: y, month: m };
-    state.selectedDay = null;
-    lastRender.calendar = null;
-    refresh();
-  });
+  const inTabs = e.target.closest && e.target.closest('[role="tablist"]');
+  if (inTabs && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const i = tabs.indexOf(e.target);
+    const next = tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+    next.focus();
+    go(next.dataset.kind);
+    e.preventDefault();
+    return;
+  }
 
-  document.getElementById("month-next").addEventListener("click", () => {
-    const m = state.month.month === 12 ? 1 : state.month.month + 1;
-    const y = state.month.month === 12 ? state.month.year + 1 : state.month.year;
-    state.month = { year: y, month: m };
-    state.selectedDay = null;
-    lastRender.calendar = null;
-    refresh();
-  });
-}
+  // Left/right steps through days, weeks or months, unless a control that
+  // uses those keys itself has focus.
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "select" || tag === "input") return;
+  if (e.key === "ArrowLeft") step(-1);
+  if (e.key === "ArrowRight") step(1);
+});
+
+// Anything that means someone is looking wakes a hidden-mode UI at once.
+["focus", "pointermove", "keydown"].forEach((type) =>
+  window.addEventListener(type, () => state.hidden && wake(), { passive: true })
+);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wake();
+});
+
+// ---- boot ----
 
 let initialized = false;
 
 function boot() {
-  // Defensive: if this ever runs more than once, re-running
-  // populateGoalSelect() would wipe the dropdown's selected value (rebuilding
-  // a <select>'s options resets selection) and duplicate every listener.
+  // Defensive: running twice would duplicate the refresh loop.
   if (initialized) return;
   initialized = true;
-
   try {
     populateGoalSelect();
-    initControls();
+    $("goal-select").addEventListener("change", (e) =>
+      saveSettings(state.live ? state.live.breakMinutes : 30, e.target.value)
+    );
     refresh();
-    setInterval(refresh, REFRESH_MS);
   } catch (err) {
     reportFatal(err);
   }
@@ -482,7 +605,7 @@ function reportFatal(err) {
   const banner = document.createElement("pre");
   banner.style.cssText =
     "white-space:pre-wrap;word-break:break-word;padding:12px;margin:0;" +
-    "font:11px/1.4 inherit;color:#5aa3ff;border-bottom:1px solid #2a2a2e;";
+    "font:12px/1.4 inherit;color:#5aa3ff;border-bottom:1px solid #2c2c32;";
   banner.textContent = "Screen Timer failed to start:\n" + message;
   document.body.prepend(banner);
   if (window.pywebview && window.pywebview.api && window.pywebview.api.log_error) {
@@ -490,9 +613,7 @@ function reportFatal(err) {
   }
 }
 
-window.addEventListener("error", (e) =>
-  reportFatal(e.error || e.message || "unknown error")
-);
+window.addEventListener("error", (e) => reportFatal(e.error || e.message || "unknown error"));
 window.addEventListener("unhandledrejection", (e) => reportFatal(e.reason));
 
 // If the bridge never turns up, the window would otherwise sit blank forever

@@ -3,7 +3,9 @@ import os
 import tempfile
 import threading
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+
+import win32gui
 
 import autostart
 import icons
@@ -12,22 +14,85 @@ import storage
 from paths import user_data_path
 
 MIN_APP_SECONDS = 60
-MAX_TOP_APPS = 8
+MAX_APPS = 30
 SNOOZE_MINUTES = 5
+PERIOD_KINDS = ("day", "week", "month", "all")
 
 _log_lock = threading.Lock()
 
 
-def _format_delta(current, previous):
+def _compare(current, previous, against):
+    """How `current` stacks up against `previous`, or None when there is
+    nothing to compare with (a first day, a first week)."""
     if not previous:
         return None
     difference = current - previous
     if abs(difference) < 60:
-        return {"direction": "same", "label": "about the same"}
+        return {"direction": "same", "label": "", "against": against}
     return {
         "direction": "up" if difference > 0 else "down",
         "label": storage.format_hms(abs(difference)),
+        "against": against,
     }
+
+
+def _short_date(d, today):
+    """"Tue 16 Sep", with the year only when it isn't this year."""
+    text = f"{d:%a} {d.day} {d:%b}"
+    return text if d.year == today.year else f"{text} {d.year}"
+
+
+def _period_bounds(kind, anchor):
+    """(first, last) dates of the day/week/month containing `anchor`.
+    Weeks run Monday to Sunday."""
+    if kind == "week":
+        first = anchor - timedelta(days=anchor.weekday())
+        return first, first + timedelta(days=6)
+    if kind == "month":
+        return storage.month_bounds(anchor)
+    return anchor, anchor
+
+
+def _period_title(kind, first, last, today):
+    if kind == "day":
+        if first == today:
+            return "Today"
+        if first == today - timedelta(days=1):
+            return "Yesterday"
+        return _short_date(first, today)
+    if kind == "week":
+        this_monday = today - timedelta(days=today.weekday())
+        if first == this_monday:
+            return "This week"
+        if first == this_monday - timedelta(days=7):
+            return "Last week"
+        if first.month == last.month:
+            text = f"{first.day} – {last.day} {last:%b}"
+        else:
+            text = f"{first.day} {first:%b} – {last.day} {last:%b}"
+        return text if last.year == today.year else f"{text} {last.year}"
+    return f"{first:%B %Y}"
+
+
+def _against(kind, is_current):
+    return {
+        "day": "yesterday" if is_current else "the day before",
+        "week": "last week" if is_current else "the week before",
+        "month": "last month" if is_current else "the month before",
+    }[kind]
+
+
+def _window_visible():
+    """Whether anyone can see the window right now. Unknown counts as
+    visible, so a lookup failure can only ever cost a little extra work,
+    never leave the UI frozen on stale numbers."""
+    hwnd = runtime.window_hwnd
+    if not hwnd:
+        return True
+    try:
+        return bool(win32gui.IsWindowVisible(hwnd)) and not win32gui.IsIconic(hwnd)
+    except Exception:
+        return True
 
 
 def log_info(label, text=""):
@@ -98,39 +163,54 @@ class Api:
         log_exception("javascript", str(message))
         return True
 
-    def _top_apps(self, seconds_by_name, app_limits=None):
-        """Shared by the daily, monthly and selected-day views — same
-        filtering (ignore short/system entries), same sort, same shape, so
-        the three call sites can't quietly drift into showing different
-        things for what is conceptually the same list."""
-        app_paths = storage.load_app_paths()
+    def _apps_payload(self, seconds_by_name, app_limits=None):
+        """{"apps": top rows, "appCount": how many there are in total}, so the
+        UI can say "top 30" rather than "all 30" when the list is capped."""
+        rows, count = self._app_rows(seconds_by_name, app_limits)
+        return {"apps": rows, "appCount": count}
+
+    def _app_rows(self, seconds_by_name, app_limits=None):
+        """One ranked app list for every tab — same filtering (short and
+        system entries dropped), same sort, same shape, so the tabs cannot
+        drift into disagreeing about what is conceptually the same list.
+
+        Icons are not included: they are ~3KB each and never change, so the
+        UI asks for them once via get_icons() instead of receiving the same
+        images again on every refresh.
+
+        app_limits are daily limits, so they are only passed for a single
+        day; set against a week's total they would read as broken.
+        """
         app_limits = app_limits or {}
         significant = {
             n: s
             for n, s in seconds_by_name.items()
             if s >= MIN_APP_SECONDS and not storage.is_ignored_process(n)
         }
-        ranked = sorted(significant.items(), key=lambda kv: kv[1], reverse=True)[:MAX_TOP_APPS]
-        return [
+        ranked = sorted(significant.items(), key=lambda kv: kv[1], reverse=True)[:MAX_APPS]
+        rows = [
             {
                 "name": storage.friendly_app_name(name),
                 "processName": name,
                 "seconds": seconds,
                 "label": storage.format_hms(seconds),
-                "icon": icons.get_icon_data_uri(app_paths[name]) if name in app_paths else None,
                 "limitMinutes": app_limits.get(name),
                 "limitExceeded": bool(app_limits.get(name)) and seconds >= app_limits[name] * 60,
             }
             for name, seconds in ranked
         ]
+        return rows, len(significant)
+
+    @_logged
+    def is_visible(self):
+        """The only call the UI makes while the window is hidden in the tray,
+        so that time costs next to nothing."""
+        return _window_visible()
 
     @_logged
     def get_state(self):
-        """Today only: the live numbers that only mean something right now —
-        current total, break countdown, snooze. Historical browsing lives in
-        get_month_state, which has no notion of "next break" because a day
-        that already happened has no next anything.
-        """
+        """The live, settings-shaped bits that aren't tied to whichever
+        period is on screen: break countdown, limit, start-on-login."""
         # One breadcrumb on the first successful bridge call. Without it there
         # is no way to tell "the UI never asked" apart from "the UI asked and
         # the answer was wrong" — they look identical from a blank window.
@@ -138,83 +218,137 @@ class Api:
             Api._logged_first_call = True
             log_info("bridge-ok", "first get_state call reached Python")
         settings = storage.load_settings()
-        today = storage.today_str()
-
-        total = storage.get_today_total_seconds()
-        apps = storage.get_today_apps()
-        app_limits = settings.get("app_limits", {})
-
-        goal_seconds = int(settings["daily_goal_hours"] * 3600)
         break_interval_seconds = settings["break_interval_minutes"] * 60
         break_in = runtime.seconds_until_break(break_interval_seconds)
 
-        year, month = int(today[:4]), int(today[5:7])
-        active_days = sum(1 for d in storage.get_month_days(year, month) if d["seconds"] > 0)
-        month_total = sum(storage.get_month_apps(year, month).values())
-        avg_seconds = month_total // active_days if active_days else 0
-
         return {
-            "dayLabel": storage.friendly_day_label(today),
-            "totalSeconds": total,
-            "totalLabel": storage.format_hms(total),
+            "visible": _window_visible(),
             "goalHours": settings["daily_goal_hours"],
-            "goalSeconds": goal_seconds,
-            "goalExceeded": goal_seconds > 0 and total > goal_seconds,
-            "delta": _format_delta(total, storage.get_day_total_seconds(storage.previous_day_str(today))),
-            "avgSeconds": avg_seconds,
-            "avgLabel": storage.format_hms(avg_seconds),
+            "goalSeconds": int(settings["daily_goal_hours"] * 3600),
             "startOnLogin": autostart.is_enabled(),
             "breakMinutes": settings["break_interval_minutes"],
-            "breakInSeconds": break_in,
             "breakInLabel": storage.format_hms(break_in) if break_in >= 60 else "under a minute",
             "snoozeMinutes": SNOOZE_MINUTES,
-            "topApps": self._top_apps(apps, app_limits),
         }
 
     @_logged
-    def get_month_state(self, year=None, month=None, selected_day=None):
-        """The History section: a full calendar month, real dates, navigable
-        by arrow rather than a fixed last-N-days window — the fix for not
-        being able to see anything before whatever the window happened to
-        cover."""
-        today_date = date.today()
-        year = int(year) if year else today_date.year
-        month = int(month) if month else today_date.month
-
-        days = storage.get_month_days(year, month)
-        total = sum(d["seconds"] for d in days)
-        active = [d for d in days if d["seconds"] > 0]
-        avg_seconds = total // len(active) if active else 0
-
+    def get_period(self, kind="day", anchor=None):
+        """Everything one tab shows. `kind` is day, week, month or all;
+        `anchor` is any ISO date inside the wanted period (None = today).
+        prevAnchor/nextAnchor are ready-made anchors for the arrows, None
+        where there is nothing to go to."""
+        if kind not in PERIOD_KINDS:
+            kind = "day"
+        today = date.fromisoformat(storage.today_str())
+        anchor = min(date.fromisoformat(anchor), today) if anchor else today
+        earliest_str = storage.earliest_recorded_date()
+        earliest = date.fromisoformat(earliest_str) if earliest_str else today
         settings = storage.load_settings()
-        app_limits = settings.get("app_limits", {})
-        month_apps = storage.get_month_apps(year, month)
 
-        selected = None
-        if selected_day:
-            selected = {
-                "date": selected_day,
-                "label": storage.friendly_day_label(selected_day),
-                "totalSeconds": storage.get_day_total_seconds(selected_day),
-                "totalLabel": storage.format_hms(storage.get_day_total_seconds(selected_day)),
-                "topApps": self._top_apps(storage.get_day_apps(selected_day), app_limits),
-            }
+        if kind == "all":
+            return self._all_time(today, earliest)
 
+        first, last = _period_bounds(kind, anchor)
+        is_current = first <= today <= last
+        days = storage.days_between(first, last)
+        total = sum(d["seconds"] for d in days)
+        active_days = sum(1 for d in days if d["seconds"] > 0)
+        avg = total // active_days if active_days else 0
+
+        prev_anchor = first - timedelta(days=1)
+        has_prev = prev_anchor >= earliest
+        compare = None
+        previous_label = None
+        if has_prev:
+            prev_days = storage.days_between(*_period_bounds(kind, prev_anchor))
+            prev_total = sum(d["seconds"] for d in prev_days)
+            if kind == "day" and is_current:
+                # Today is still running, so "3h less than yesterday" would be
+                # true every morning and mean nothing. Yesterday's total is
+                # given as plain context instead.
+                previous_label = storage.format_hms(prev_total) if prev_total else None
+            elif kind == "day":
+                compare = _compare(total, prev_total, _against(kind, is_current))
+            else:
+                # Averages, not totals: a week that started on Monday would
+                # otherwise always look far lighter than last week's seven
+                # full days.
+                prev_active = sum(1 for d in prev_days if d["seconds"] > 0)
+                prev_avg = prev_total // prev_active if prev_active else 0
+                compare = _compare(avg, prev_avg, _against(kind, is_current))
+
+        apps = storage.apps_between(first, last)
         return {
-            "year": year,
-            "month": month,
-            "monthLabel": storage.month_label(year, month),
-            "canGoPrev": storage.can_go_prev_month(year, month),
-            "canGoNext": storage.can_go_next_month(year, month),
+            "kind": kind,
+            "anchor": str(anchor),
+            "title": _period_title(kind, first, last, today),
+            "isCurrent": is_current,
+            "prevAnchor": str(prev_anchor) if has_prev else None,
+            "nextAnchor": str(last + timedelta(days=1)) if last < today else None,
             "totalSeconds": total,
             "totalLabel": storage.format_hms(total),
-            "avgSeconds": avg_seconds,
-            "avgLabel": storage.format_hms(avg_seconds),
-            "activeDays": len(active),
-            "days": days,
-            "selectedDay": selected_day,
-            "selected": selected,
-            "topApps": self._top_apps(month_apps),
+            "avgLabel": storage.format_hms(avg),
+            "activeDays": active_days,
+            "compare": compare,
+            "previousLabel": previous_label,
+            "days": days if kind != "day" else [],
+            **self._apps_payload(apps, settings.get("app_limits", {}) if kind == "day" else None),
+        }
+
+    def _all_time(self, today, earliest):
+        recorded = storage.recorded_days()
+        total = sum(seconds for _, seconds in recorded)
+        avg = total // len(recorded) if recorded else 0
+
+        busiest = None
+        if recorded:
+            busiest_day, busiest_seconds = max(recorded, key=lambda row: row[1])
+            busiest = {
+                "date": busiest_day,
+                "title": _short_date(date.fromisoformat(busiest_day), today),
+                "label": storage.format_hms(busiest_seconds),
+            }
+
+        by_month = {}
+        for day_str, seconds in recorded:
+            by_month[day_str[:7]] = by_month.get(day_str[:7], 0) + seconds
+        months = [
+            {
+                "anchor": f"{key}-01",
+                "title": f"{date.fromisoformat(key + '-01'):%b %Y}",
+                "seconds": seconds,
+                "label": storage.format_hms(seconds),
+            }
+            for key, seconds in sorted(by_month.items(), reverse=True)
+        ]
+
+        return {
+            "kind": "all",
+            "anchor": str(today),
+            # Not "All time": the tab right above already says that.
+            "title": f"Since {earliest.day} {earliest:%b %Y}" if recorded else "All time",
+            "isCurrent": True,
+            "prevAnchor": None,
+            "nextAnchor": None,
+            "totalSeconds": total,
+            "totalLabel": storage.format_hms(total),
+            "avgLabel": storage.format_hms(avg),
+            "activeDays": len(recorded),
+            "busiest": busiest,
+            "months": months,
+            "compare": None,
+            "days": [],
+            **self._apps_payload(storage.apps_between(earliest, today)),
+        }
+
+    @_logged
+    def get_icons(self, process_names):
+        """processName -> PNG data URI (or None). Asked once per app per
+        session; see _app_rows for why icons travel separately."""
+        app_paths = storage.load_app_paths()
+        return {
+            name: icons.get_icon_data_uri(app_paths[name]) if name in app_paths else None
+            for name in process_names or []
         }
 
     @_logged
