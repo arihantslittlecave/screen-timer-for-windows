@@ -10,6 +10,8 @@ const HIDDEN_POLL_MS = 30000;
 const COLLAPSED_APPS = 5;
 const LIMIT_MAX_HOURS = 23;
 const BREAK_OPTIONS = [15, 30, 45, 60, 90];
+const SNOOZE_OPTIONS = [5, 10, 15, 30];
+const PICKED_APPS = 5;
 const GOAL_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
 const state = {
@@ -22,6 +24,8 @@ const state = {
   live: null, // get_state()
   period: null, // get_period()
   periodKey: null,
+  pick: null, // ISO date picked in Week/Month/All time, shown in place
+  picked: null, // get_period("day", pick)
 };
 
 const iconCache = new Map(); // processName -> data URI or null
@@ -52,6 +56,13 @@ function hoursLabel(minutes) {
   const m = minutes % 60;
   if (!h) return `${m}m`;
   return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+// A steady colour per app, for apps whose icon can't be found.
+function hueFor(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
 }
 
 function heatLevel(seconds) {
@@ -117,6 +128,7 @@ async function refreshOnce() {
     state.period = period;
     state.periodKey = key;
   }
+  await loadPicked();
 
   render();
   return VISIBLE_POLL_MS;
@@ -129,6 +141,16 @@ function wake() {
 }
 
 window.__stWake = wake;
+
+async function loadPicked() {
+  const pick = state.pick;
+  if (!pick) return;
+  if (state.picked && state.picked.anchor === pick && !state.picked.isCurrent) return;
+  const day = await api().get_period("day", pick);
+  if (state.pick !== pick) return; // picked something else meanwhile
+  await loadIcons(day.apps);
+  state.picked = day;
+}
 
 async function loadIcons(apps) {
   const missing = apps.map((a) => a.processName).filter((p) => !iconCache.has(p));
@@ -148,6 +170,8 @@ function go(kind, anchor = null) {
   state.anchor = anchor;
   state.appsExpanded = false;
   state.limitEditorFor = null;
+  state.pick = null;
+  state.picked = null;
   renderTabs();
   // Until the new period arrives, what's on screen belongs to the old one;
   // dim it rather than let it pass for the answer.
@@ -183,6 +207,7 @@ function render() {
   renderTodayExtras(p);
   renderChart(p);
   renderStats(p);
+  renderPicked();
   renderApps(p);
 }
 
@@ -211,9 +236,12 @@ function renderLines(p) {
   let one = "";
   let two = "";
   if (p.kind === "day") {
-    if (!p.totalSeconds) one = "Nothing tracked yet.";
-    else if (p.previousLabel) one = `Yesterday you spent ${esc(p.previousLabel)}`;
-    else one = compareHTML(p.compare, false);
+    const goal = state.live ? state.live.goalSeconds : 0;
+    if (!p.totalSeconds) one = p.isCurrent ? "Nothing tracked yet." : "Nothing tracked this day.";
+    // A day is measured against your limit, shown right below (and the week
+    // chart shows yesterday); only without a limit does a past day fall back
+    // to comparing with the day before it.
+    else if (!goal && !p.isCurrent) one = compareHTML(p.compare, false);
   } else if (p.kind === "all") {
     one = p.activeDays ? `${p.activeDays} ${p.activeDays === 1 ? "day" : "days"} tracked` : "Nothing tracked yet.";
   } else {
@@ -231,20 +259,7 @@ function renderTodayExtras(p) {
     return;
   }
 
-  let html = "";
-  if (live.goalSeconds > 0) {
-    const pct = Math.round((p.totalSeconds / live.goalSeconds) * 100);
-    const over = p.totalSeconds > live.goalSeconds;
-    const goal = hoursLabel(Math.round(live.goalSeconds / 60));
-    const text = over
-      ? `<span class="warn">Over your ${goal} daily limit</span>`
-      : `<strong>${pct}%</strong> of your ${goal} daily limit`;
-    html +=
-      `<div class="limit">` +
-      `<div class="track${over ? " over" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="100" ` +
-      `aria-valuenow="${Math.min(pct, 100)}" aria-label="Daily limit used"><span style="width:${Math.min(pct, 100)}%"></span></div>` +
-      `<div class="limit-text">${text}</div></div>`;
-  }
+  let html = p.totalSeconds || p.isCurrent ? limitHTML(p.totalSeconds) : "";
   if (p.isCurrent) {
     html +=
       `<div class="break-row"><span>Next break in <strong>${esc(live.breakInLabel)}</strong></span>` +
@@ -253,17 +268,38 @@ function renderTodayExtras(p) {
   setHTML($("today-extras"), html);
 }
 
+function limitHTML(seconds) {
+  const goalSeconds = state.live ? state.live.goalSeconds : 0;
+  if (!goalSeconds) return "";
+  const pct = Math.round((seconds / goalSeconds) * 100);
+  const over = seconds > goalSeconds;
+  const goal = hoursLabel(Math.round(goalSeconds / 60));
+  const text = over
+    ? `<strong class="warn">${hoursLabel(Math.round((seconds - goalSeconds) / 60))} over</strong> your ${goal} daily limit`
+    : `<strong>${pct}%</strong> of your ${goal} daily limit`;
+  return (
+    `<div class="limit">` +
+    `<div class="track${over ? " over" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="100" ` +
+    `aria-valuenow="${Math.min(pct, 100)}" aria-label="Daily limit used"><span style="width:${Math.min(pct, 100)}%"></span></div>` +
+    `<div class="limit-text">${text}</div></div>`
+  );
+}
+
 function renderChart(p) {
   const chart = $("chart");
   let html = "";
-  if (p.kind === "week") html = weekChart(p);
-  else if (p.kind === "month") html = monthChart(p);
+  if (p.kind === "day" && p.days.length) {
+    html = `<h2 class="section-title">${esc(p.weekTitle)}</h2>` + weekChart(p, p.anchor, "goto");
+  } else if (p.kind === "week") html = weekChart(p, state.pick, "pick");
+  else if (p.kind === "month") html = monthChart(p, state.pick);
   else if (p.kind === "all" && p.months.length) html = monthsList(p);
   chart.classList.toggle("hidden", !html);
   setHTML(chart, html);
 }
 
-function weekChart(p) {
+// `selected` is the day drawn as chosen. In the Day tab a bar moves to that
+// day; in the Week tab it opens the day in place, below the chart.
+function weekChart(p, selected, action) {
   const goal = state.live ? state.live.goalSeconds : 0;
   const most = Math.max(...p.days.map((d) => d.seconds), 1);
   // Show the limit line only when it fits without squashing the bars flat.
@@ -276,9 +312,10 @@ function weekChart(p) {
       const height = d.seconds ? Math.max(4, Math.round((d.seconds / scale) * SLOT)) : 0;
       const label = d.isFuture ? "" : d.seconds ? d.label : "–";
       const aria = `${d.weekday} ${d.dayNum}: ${d.isFuture ? "not yet" : d.label}`;
+      const cls = ["bar", d.isToday ? "today" : "", d.date === selected ? "selected" : ""].filter(Boolean).join(" ");
       return (
-        `<button class="bar${d.isToday ? " today" : ""}" type="button" data-action="goto" data-kind="day" ` +
-        `data-anchor="${d.date}" aria-label="${esc(aria)}" ${d.isFuture ? "disabled" : ""}>` +
+        `<button class="${cls}" type="button" data-action="${action}" data-kind="day" data-anchor="${d.date}" ` +
+        `aria-label="${esc(aria)}" aria-pressed="${d.date === selected}" ${d.isFuture ? "disabled" : ""}>` +
         `<span class="bar-value">${esc(label)}</span>` +
         `<span class="bar-slot"><span class="bar-fill" style="height:${height}px"></span></span>` +
         `<span class="bar-day">${esc(d.weekday)}</span></button>`
@@ -294,18 +331,20 @@ function weekChart(p) {
   return `<div class="bars">${bars}${line}</div>`;
 }
 
-function monthChart(p) {
+function monthChart(p, selected) {
   const head = ["M", "T", "W", "T", "F", "S", "S"].map((d) => `<span>${d}</span>`).join("");
   const blanks = '<span class="cell blank"></span>'.repeat(p.days[0].weekdayIndex);
   const cells = p.days
     .map((d) => {
       if (d.isFuture) return `<span class="cell future" aria-hidden="true">${d.dayNum}</span>`;
       const level = heatLevel(d.seconds);
-      const cls = ["cell", level ? `h${level}` : "", d.isToday ? "today" : ""].filter(Boolean).join(" ");
+      const cls = ["cell", level ? `h${level}` : "", d.isToday ? "today" : "", d.date === selected ? "selected" : ""]
+        .filter(Boolean)
+        .join(" ");
       const aria = `${d.weekday} ${d.dayNum}: ${d.seconds ? d.label : "nothing tracked"}`;
       return (
-        `<button class="${cls}" type="button" data-action="goto" data-kind="day" data-anchor="${d.date}" ` +
-        `aria-label="${esc(aria)}" title="${esc(aria)}">${d.dayNum}</button>`
+        `<button class="${cls}" type="button" data-action="pick" data-anchor="${d.date}" ` +
+        `aria-label="${esc(aria)}" aria-pressed="${d.date === selected}" title="${esc(aria)}">${d.dayNum}</button>`
       );
     })
     .join("");
@@ -336,7 +375,8 @@ function renderStats(p) {
   let html = "";
   if (p.kind === "all" && p.activeDays) {
     const busiest = p.busiest
-      ? `<button class="stat" type="button" data-action="goto" data-kind="day" data-anchor="${p.busiest.date}">` +
+      ? `<button class="stat${state.pick === p.busiest.date ? " selected" : ""}" type="button" data-action="pick" ` +
+        `data-anchor="${p.busiest.date}" aria-pressed="${state.pick === p.busiest.date}">` +
         `<div class="stat-label">Busiest day</div><div class="stat-value">${esc(p.busiest.label)}</div>` +
         `<div class="stat-sub">${esc(p.busiest.title)}</div></button>`
       : "";
@@ -347,6 +387,43 @@ function renderStats(p) {
   }
   stats.classList.toggle("hidden", !html);
   setHTML(stats, html);
+}
+
+// A day picked in Week, Month or All time opens here, under the chart,
+// instead of taking you away to the Day tab.
+function renderPicked() {
+  const box = $("picked");
+  const d = state.pick && state.picked && state.picked.anchor === state.pick ? state.picked : null;
+  if (!d) {
+    box.classList.add("hidden");
+    box.__shown = null;
+    setHTML(box, "");
+    return;
+  }
+  const opening = box.__shown !== d.anchor;
+  box.__shown = d.anchor;
+  box.classList.remove("hidden");
+  const most = d.apps.length ? d.apps[0].seconds : 1;
+  const apps = d.apps.length
+    ? d.apps.slice(0, PICKED_APPS).map((a) => appRow(a, most, false)).join("")
+    : `<p class="empty">Nothing tracked this day.</p>`;
+  const more =
+    d.apps.length > PICKED_APPS
+      ? `<button class="link more" type="button" data-action="goto" data-kind="day" data-anchor="${d.anchor}">` +
+        `See all ${d.apps.length} apps</button>`
+      : "";
+  setHTML(
+    box,
+    `<div class="picked-head"><div><h2 class="section-title">${esc(d.title)}</h2>` +
+      `<div class="picked-total">${esc(d.totalLabel)}</div></div>` +
+      `<button class="icon-btn small" type="button" data-action="unpick" aria-label="Close ${esc(d.title)}" title="Close">` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">` +
+      `<path d="M6 6l12 12M18 6L6 18"/></svg></button></div>` +
+      (d.totalSeconds ? limitHTML(d.totalSeconds) : "") +
+      `<div class="picked-apps">${apps}</div>${more}`
+  );
+  // It opens below the chart, often under the fold; bring it into view once.
+  if (opening) box.scrollIntoView({ block: "nearest" });
 }
 
 function renderApps(p) {
@@ -380,7 +457,7 @@ function appRow(a, most, canLimit) {
   const icon = iconCache.get(a.processName);
   const glyph = icon
     ? `<img src="${icon}" alt="" />`
-    : `<span class="letter">${esc(a.name.charAt(0).toUpperCase())}</span>`;
+    : `<span class="letter" style="--hue:${hueFor(a.name)}">${esc(a.name.charAt(0).toUpperCase())}</span>`;
   let note = "";
   if (canLimit && a.limitMinutes) {
     note = a.limitExceeded
@@ -430,6 +507,14 @@ function renderSettings() {
       (m) =>
         `<button class="option" type="button" data-action="break" data-value="${m}" ` +
         `aria-pressed="${m === live.breakMinutes}">${hoursLabel(m)}</button>`
+    ).join("")
+  );
+  setHTML(
+    $("snooze-options"),
+    SNOOZE_OPTIONS.map(
+      (m) =>
+        `<button class="option" type="button" data-action="snooze-set" data-value="${m}" ` +
+        `aria-pressed="${m === live.snoozeMinutes}">${m} min</button>`
     ).join("")
   );
   setHTML(
@@ -488,6 +573,23 @@ const actions = {
     await api().snooze_break();
     refresh();
   },
+  pick: (el) => {
+    const date = el.dataset.anchor;
+    state.pick = state.pick === date ? null : date; // tap again to close
+    state.picked = null;
+    render();
+    if (state.pick) refresh();
+  },
+  unpick: () => {
+    state.pick = null;
+    state.picked = null;
+    render();
+  },
+  "snooze-set": async (el) => {
+    await api().set_snooze_minutes(Number(el.dataset.value));
+    flashSaved();
+    refresh();
+  },
   "more-apps": () => {
     state.appsExpanded = !state.appsExpanded;
     render();
@@ -531,6 +633,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (state.limitEditorFor) closeLimitEditor();
     else if (state.settingsOpen) actions["close-settings"]();
+    else if (state.pick) actions.unpick();
     return;
   }
 

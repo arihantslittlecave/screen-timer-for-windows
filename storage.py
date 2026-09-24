@@ -2,10 +2,10 @@ import json
 import os
 import shutil
 import time
-import re
 import calendar
 from datetime import date, datetime, timedelta
 
+import icons
 from paths import user_data_path
 
 DATA_FILE = user_data_path("data.json")
@@ -18,6 +18,7 @@ MAX_CLOCK_SLIP_DAYS = 2
 
 DEFAULT_SETTINGS = {
     "break_interval_minutes": 30,
+    "snooze_minutes": 5,
     "daily_goal_hours": 6,
     "app_limits": {},  # process_name -> minutes
     # Flipped true the first time first-run setup runs. Its only job is to
@@ -357,12 +358,42 @@ def remember_app_paths(new_paths):
     _atomic_write_json(PATHS_FILE, known)
 
 
+# For apps whose .exe gives no usable name, or is no longer installed to ask.
+KNOWN_APP_NAMES = {
+    "msedge": "Microsoft Edge",
+    "chrome": "Google Chrome",
+    "code": "VS Code",
+    "explorer": "File Explorer",
+    "whatsapp": "WhatsApp",
+    "whatsapp.root": "WhatsApp",
+    "utweb": "µTorrent Web",
+    "utorrent": "µTorrent",
+    "gethelp": "Get Help",
+    "photos": "Photos",
+    "notepad": "Notepad",
+    "pythonw": "Python",
+    "systemsettings": "Settings",
+    "systemsettingsadminflows": "Settings",
+    "windowsterminal": "Terminal",
+    "vlc": "VLC",
+    "mmc": "Management Console",
+    "pickerhost": "File Picker",
+}
+
+
 def friendly_app_name(process_name):
-    name = process_name[:-4] if process_name.lower().endswith(".exe") else process_name
-    if not name:
-        return name
-    spaced = re.sub(r"(?<!^)(?=[A-Z])", " ", name)
-    return spaced[:1].upper() + spaced[1:]
+    stem = process_name[:-4] if process_name.lower().endswith(".exe") else process_name
+    if not stem:
+        return stem
+    known = KNOWN_APP_NAMES.get(stem.lower())
+    if known:
+        return known
+    found = icons.get_display_name(load_app_paths().get(process_name))
+    if found:
+        return found
+    # Not split on capitals: "WhatsApp" and "CapCut" are names, and turning
+    # them into "Whats App" and "Cap Cut" is worse than leaving them alone.
+    return stem[:1].upper() + stem[1:]
 
 
 def format_hms(total_seconds):

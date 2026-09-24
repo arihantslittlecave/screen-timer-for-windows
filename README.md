@@ -2,306 +2,196 @@
 
 # Screen Timer for Windows
 
-A screen time tracker for your laptop. It sits quietly in your taskbar, shows
-you which apps actually ate your day, and nudges you to take breaks.
+See how long you spend on your laptop, and on which apps. It sits quietly in
+your taskbar and reminds you to take breaks.
 
-Free, open source, and completely private. No account, no sign up, and nothing
-ever leaves your computer.
+Free, open source and private. No account, and nothing ever leaves your
+computer.
+
+### [⬇ Download ScreenTimer.exe](https://github.com/arihantslittlecave/screen-timer-for-windows/releases/latest/download/ScreenTimer.exe)
+
+<sub>For Windows 10 and 11 · about 17 MB · no installer</sub>
 
 <table>
 <tr>
-<td><img src="assets/screenshot-day.png" width="360" alt="Day: today's total, your daily limit, next break, and apps ranked by time"></td>
+<td><img src="assets/screenshot-day.png" width="360" alt="Day: today's total, your daily limit, next break, this week, and apps ranked by time"></td>
 <td><img src="assets/screenshot-week.png" width="360" alt="Week: a bar for each day, with your daily limit marked"></td>
 </tr>
 <tr>
-<td><img src="assets/screenshot-month.png" width="360" alt="Month: a calendar shaded by how much you used each day"></td>
+<td><img src="assets/screenshot-month.png" width="360" alt="Month: a calendar shaded by how much you used each day, with one day opened to show its apps"></td>
 <td><img src="assets/screenshot-all.png" width="360" alt="All time: your total since you started, daily average, busiest day and each month"></td>
 </tr>
 </table>
 
-<sub>Screenshots use made-up demo hours, not anyone's real history.</sub>
+<sub>Screenshots use made-up demo hours.</sub>
 
 ---
 
-## Download and install
+## Start in 3 steps
 
-**[⬇ Download ScreenTimer.exe](../../releases/latest/download/ScreenTimer.exe)**
+1. **Download** the file using the link above
+2. **Double-click** `ScreenTimer.exe`
+3. **Find it** in your taskbar, near the clock: a black icon with a blue ring.
+   Click it to open. If you can't see it, click the **^** arrow next to the
+   clock.
 
-1. Click the link above to download the file
-2. Double-click the downloaded `ScreenTimer.exe`
-3. That's it, it's running
+That's it. It starts counting straight away and starts by itself when you
+turn on your laptop.
 
-There's no installer and nothing to set up. It starts tracking straight away
-and puts a small blue ring icon in your taskbar.
+> **Seeing a blue "Windows protected your PC" box?** Click **More info**, then
+> **Run anyway**. Windows shows this for most small free apps, because
+> removing it needs a paid certificate.
 
-### If Windows shows a blue warning
+---
 
-You'll probably see a blue box saying **"Windows protected your PC"**. This is
-normal and doesn't mean anything is wrong.
+## What it does
 
-Click **More info**, then click **Run anyway**.
+| | |
+|---|---|
+| **Day, Week, Month, All time** | Tabs at the top. The big number is your total |
+| **Go back in time** | The **‹ ›** arrows, or your arrow keys |
+| **See any day** | Click a bar or a calendar day. It opens right there |
+| **Daily limit** | A bar fills up as you get close, and you get a notification when you pass it |
+| **Break reminders** | A nudge every 30 minutes, or whatever you pick. You can snooze it |
+| **App limits** | Click the timer icon next to an app on the Day tab |
+| **Settings** | The gear at the top right |
+
+Closing the window keeps it counting in the background. To quit completely,
+right-click the tray icon and choose **Quit**.
+
+---
+
+## Private by design
+
+- Everything is saved in one folder on your computer: `%APPDATA%\ScreenTimer`
+- There's no account, no ads and no tracking
+- The app has no internet code at all, so it can't send your data anywhere.
+  [Check the code](#for-developers) if you like
+
+---
+
+## Questions
 
 <details>
-<summary>Why does that warning appear?</summary>
+<summary><b>How does it count?</b></summary>
 
-Windows shows it for any app that hasn't been signed with a paid certificate,
-which costs hundreds of pounds a year. Almost every small free app gets this
-warning, regardless of whether it's safe.
+Every second, it gives that second to whichever window you're using. Only one
+window can be in focus at a time, so having lots of apps open doesn't add up
+to more time.
 
-If you'd rather not take my word for it, all the code is public in this repo.
-You can [see exactly what's in it](#whats-actually-inside), or
-[build it yourself](#build-it-yourself) and never touch my download.
+It stops counting after a minute without any typing or mouse movement, and
+while your laptop is asleep. Music playing in the background doesn't count.
+Only what you're looking at does.
 
 </details>
 
-### If it won't open at all
+<details>
+<summary><b>It won't open at all</b></summary>
 
-A newer Windows 11 feature called **Smart App Control** blocks unsigned apps
-outright, with no "Run anyway" button. If the app closes instantly, or you get a
-message about Smart App Control blocking it, that's what happened.
+A Windows 11 feature called **Smart App Control** can block apps that aren't
+signed. Check it in **Windows Security** → **App & browser control** →
+**Smart App Control**.
 
-To check: open **Windows Security** → **App & browser control** → **Smart App
-Control**.
+The easiest fix is to [run it from the source code](#for-developers), which
+Smart App Control doesn't block. Turning Smart App Control off also works, but
+Windows can't turn it back on without resetting your PC, so I wouldn't.
 
-If it's on, your options are:
+</details>
 
-- **[Build it yourself](#build-it-yourself)** from the source in this repo. It
-  runs as plain Python and Smart App Control doesn't apply. This is the option
-  I'd suggest.
-- Or turn Smart App Control off. Worth knowing before you do: it's a real
-  security layer, and Windows **cannot turn it back on** afterwards without
-  resetting your PC. I'd rather you built it from source than switched that off
-  for my app.
+<details>
+<summary><b>How do I stop it starting with Windows?</b></summary>
 
-### Where to find it once it's running
+Open settings (the gear) and set **Start with Windows** to **Off**.
 
-Look at the **bottom right of your taskbar**, near the clock. There'll be a
-small black icon with a blue ring. Click it to open the window.
+</details>
 
-If you can't see it, click the small **^** arrow next to the clock, it may be
-tucked in there. You can drag it out onto the taskbar to keep it visible.
-
----
-
-## How to use it
-
-| What you want | How to do it |
-|---|---|
-| Open the window | Click the Screen Timer icon in your taskbar |
-| Close the window | Click X. It keeps tracking in the background |
-| Quit completely | Right-click the tray icon, then Quit |
-| See today, this week, this month, or everything | The **Day**, **Week**, **Month** and **All time** tabs |
-| See another day, week or month | The **‹ ›** arrows (or your arrow keys) |
-| See one day in detail | Click any bar in Week, or any day in Month |
-
-### Settings
-
-Click the gear at the top right.
-
-- **Break reminder** sets how often it nudges you to step away
-- **Daily limit** is your target for the day. The bar under today's total
-  fills up as you get closer to it, and you get a notification when you pass it
-- **Start with Windows** turns starting at sign-in on or off
-- **Per-app limits** are set by clicking the small timer icon next to any app
-  on the Day tab
-
-### Stop it starting automatically
-
-It adds itself to your startup apps so you don't have to remember to open it.
-To turn that off, switch **Start with Windows** to Off in settings. Or open
-**Task Manager**, go to the **Startup apps** tab, find **Screen Timer**, and
-click **Disable**. Either way, it won't turn itself back on.
-
-### Uninstalling
-
-There's no installer, so there's nothing to uninstall. To remove it completely:
+<details>
+<summary><b>How do I remove it?</b></summary>
 
 1. Right-click the tray icon and choose **Quit**
-2. Task Manager → Startup apps → Screen Timer → **Disable**
-3. Delete `ScreenTimer.exe`
-4. Delete the folder `%APPDATA%\ScreenTimer` (paste that into File Explorer's
-   address bar to find it)
+2. Delete `ScreenTimer.exe`
+3. Delete the folder `%APPDATA%\ScreenTimer` (paste that into File Explorer's
+   address bar)
 
-Nothing else is touched, and nothing is left behind in Program Files.
+Nothing else is left behind.
 
----
+</details>
 
-## How the counting works
+<details>
+<summary><b>Something isn't working</b></summary>
 
-Reasonable question if you're on a laptop with fifteen things open at once:
-what does "1 hour" actually mean?
-
-Every second, it checks which window you're currently using, and gives that one
-second to that one app. That's the whole rule.
-
-So having lots of windows open doesn't inflate your numbers. Only one window can
-be in focus at a time, which means a second only ever counts once. Your daily
-total is always exactly the sum of your apps, never more.
-
-It also stops counting after 60 seconds of no typing or mouse movement, so
-going for lunch doesn't quietly add screen time. It doesn't count while your
-laptop is asleep either.
-
-One thing worth knowing: this measures your attention, not what's running in the
-background. Music playing while you work counts as whatever you're working in,
-and a download running for three hours counts as nothing. Your phone measures it
-the same way.
-
----
-
-## Your data and privacy
-
-Everything is stored in one folder on your own computer:
-
-```
-%APPDATA%\ScreenTimer\
-```
-
-Paste that into File Explorer's address bar to see it. Your history is a plain
-readable file, roughly 370 bytes per day, so a full year of use takes about
-130 KB. Delete that folder and your history is gone.
-
-It ignores Windows system things like the lock screen, Start menu and search, so
-your list only shows apps you actually chose to open. It doesn't count itself
-either.
-
-Nothing is uploaded, nothing is shared, and there's no account. See below for
-how to verify that yourself.
-
----
-
-## What's actually inside
-
-Fair enough if you'd like to check before running a download. Here's everything:
-about 1,900 lines of Python, plus about 1,500 for the window itself.
-
-**The two folders**
-
-| Folder | What's in it |
-|---|---|
-| `assets/` | Pictures. The app icon, the banner and the screenshots |
-| `ui/` | The window itself. `index.html` is the layout, `style.css` the colours, `app.js` the clicking |
-
-**The main app**
-
-| File | What it does |
-|---|---|
-| `main.py` | The heart of it. Tray icon, window, the loop that counts each second, notifications |
-| `storage.py` | Reads and writes your data, handles the day rolling over, ignores system apps |
-| `api.py` | Passes messages between the window and Python |
-
-**Small helpers, one job each**
-
-| File | What it does |
-|---|---|
-| `idle.py` | How long since you touched the keyboard |
-| `active_window.py` | Which app is in focus right now |
-| `runtime.py` | The break countdown |
-| `paths.py` | Where files live, bundled vs. your own data |
-| `icons.py` | Pulls real icons out of other apps |
-| `icon_art.py` | Draws the app icon |
-| `autostart.py` | The start-on-login setting |
-| `first_run.py` | First-launch setup |
-
-**Build files:** `screen-timer.spec` and `version_info.txt` are the recipe for
-turning the source code into the `.exe`.
-
-**What it does not contain:** any networking code at all. There's no `requests`,
-no `urllib`, no sockets, and no web addresses it calls. The app physically
-cannot send your data anywhere, because there's nothing in it capable of
-talking to the internet. Search the repo yourself if you like.
-
-The window is a local HTML page shown through
-[pywebview](https://pywebview.flowrl.com/) using Windows' own built-in WebView2,
-so there's no browser bundled inside it either.
-
----
-
-## What happens when things go wrong
-
-A tracker is only worth having if a year of history is still there in a year, so
-the failure cases got more attention than the happy path.
-
-**Your history survives a crash.** Days are written to a temp file, forced to
-disk, and then renamed into place. The rename is the atomic part, but forcing
-the write first is what matters: without it Windows can record the new file's
-length while its contents are still in a cache, and a power cut then leaves a
-file of the right size full of zeros. That is not a theory — it happened during
-development, and the fix is the reason it cannot cost you a day again.
-
-**A damaged file is never silently replaced.** The previous copy is kept
-alongside the live one, so a file that comes back unreadable is recovered from
-it rather than quietly starting your history over. The damaged copy is renamed,
-never deleted, in case it can still be salvaged by hand.
-
-**A locked file defers, it does not lose.** Antivirus and search indexers grab
-files at random moments. A write that fails is retried, and the seconds it was
-carrying stay pending until one succeeds, so a busy minute costs nothing. If
-writes keep failing for two minutes the app says so, rather than sitting there
-looking healthy and counting nothing.
-
-**Only one copy ever runs.** Start it twice and the second one brings the first
-window forward instead of launching a second tracker, because two trackers
-writing the same file independently is how days get double-counted.
-
-**A launch that goes wrong leaves a trail.** Startup writes a checkpoint at each
-step, using nothing but the standard library, so a failure during startup can be
-placed exactly rather than leaving an empty log and no explanation.
-
----
-
-## Build it yourself
-
-You'll need Python 3.11 or newer on Windows.
-
-```bash
-git clone https://github.com/arihantslittlecave/screen-timer-for-windows.git
-cd screen-timer-for-windows
-pip install -r requirements.txt
-pyinstaller screen-timer.spec
-```
-
-Your `.exe` will appear in the `dist` folder. Or run it straight from the source
-without packaging anything:
-
-```bash
-python main.py
-```
-
----
-
-## Something not working?
-
-This has been built and tested on one machine, mine. Windows being Windows,
-there's a fair chance something behaves differently on yours.
-
-If it doesn't work, or the tray icon won't appear, or it does something odd,
-**[open an issue](../../issues/new)** and tell me what happened. I'll fix it.
-I genuinely want to know.
-
-It helps a lot if you include the contents of:
+[Open an issue](https://github.com/arihantslittlecave/screen-timer-for-windows/issues/new)
+and tell me what happened. It really helps if you attach this file:
 
 ```
 %APPDATA%\ScreenTimer\screen-timer.log
 ```
 
-That's where the app writes down what it was doing when things went wrong.
-
-If that file is missing or empty, the app couldn't write to its own folder, so
-check these two instead:
-
-```
-%APPDATA%\ScreenTimer\boot-trace.log
-%TEMP%\ScreenTimer-fallback.log
-```
-
-Between them they cover the case where the app can't write anywhere it normally
-would, which is exactly the case that used to leave nothing behind to look at.
+</details>
 
 ---
 
-## Licence
+## For developers
 
-MIT, so do whatever you like with it. See [LICENSE](LICENSE).
+Needs Python 3.11 or newer on Windows.
 
-Built by [arihant](https://github.com/arihantslittlecave).
+```bash
+git clone https://github.com/arihantslittlecave/screen-timer-for-windows.git
+cd screen-timer-for-windows
+pip install -r requirements.txt
+python main.py
+```
+
+To build the `.exe` yourself, run `pyinstaller screen-timer.spec`. It appears
+in `dist`.
+
+<details>
+<summary><b>What's in the code</b></summary>
+
+About 2,200 lines of Python and 1,700 for the window.
+
+| File | What it does |
+|---|---|
+| `main.py` | Tray icon, window, the loop that counts each second, notifications |
+| `storage.py` | Reads and writes your data, handles days rolling over |
+| `api.py` | Passes messages between the window and Python |
+| `ui/` | The window: `index.html`, `style.css`, `app.js` |
+| `active_window.py` | Which app is in focus right now |
+| `idle.py` | How long since you touched the keyboard or mouse |
+| `icons.py` | Finds each app's real icon and name |
+| `icon_art.py` | Draws the Screen Timer icon |
+| `runtime.py` | The break countdown |
+| `autostart.py`, `first_run.py`, `paths.py` | Start with Windows, first launch, file locations |
+
+The window is a local web page shown with
+[pywebview](https://pywebview.flowrl.com/), using the WebView2 that comes with
+Windows. There's no `requests`, `urllib` or sockets anywhere in the code.
+
+</details>
+
+<details>
+<summary><b>How it keeps your history safe</b></summary>
+
+- **Crash-safe saves.** Each save is written to a temp file, forced to disk,
+  then swapped in, so a power cut can't leave a half-written file.
+- **Backups.** The previous copy is kept, so a damaged file is restored rather
+  than your history starting over.
+- **Locked files wait.** If antivirus locks the file for a moment, the unsaved
+  seconds are kept and saved on the next try.
+- **One copy at a time.** Opening it twice brings up the window that's already
+  running, instead of counting everything twice.
+
+</details>
+
+---
+
+## Made by
+
+Made by **arihant jain**, a product designer.
+
+[Portfolio](https://arihantdoeswhatever.online) ·
+[X](https://x.com/aridoeswtv) ·
+[LinkedIn](https://www.linkedin.com/in/aridoeswtv) ·
+[GitHub](https://github.com/arihantslittlecave)
+
+MIT licence. Use it however you like. See [LICENSE](LICENSE).

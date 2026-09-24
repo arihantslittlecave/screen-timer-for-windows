@@ -100,7 +100,8 @@ button {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: #000;
+  background: linear-gradient(180deg, #1e1e24, #000 75%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   color: var(--accent);
   display: grid;
   place-items: center;
@@ -116,25 +117,27 @@ button {
   font-size: 15px;
 }
 
+/* Round, filled buttons so every control reads as something to press. */
 .icon-btn {
   width: 36px;
   height: 36px;
   display: grid;
   place-items: center;
-  background: none;
-  border: none;
-  border-radius: 10px;
-  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  color: var(--ink);
   padding: 0;
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: var(--raised);
+  background: #2c2c33;
+  border-color: var(--accent);
   color: var(--ink);
 }
 
 .icon-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.35;
   cursor: default;
 }
 
@@ -146,6 +149,11 @@ button {
 .icon-btn.small {
   width: 32px;
   height: 32px;
+}
+
+.icon-btn.small svg {
+  width: 17px;
+  height: 17px;
 }
 
 /* ---- tabs: plain text, the active one underlined ---- */
@@ -204,7 +212,7 @@ button {
 
 .period-nav {
   display: flex;
-  gap: 2px;
+  gap: 8px;
 }
 
 .big {
@@ -307,7 +315,7 @@ button {
 
 /* ---- cards ---- */
 .card {
-  background: var(--surface);
+  background: linear-gradient(180deg, #1b1b1f, var(--surface) 120px);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
   padding: 16px;
@@ -365,11 +373,23 @@ button {
   width: 62%;
   max-width: 30px;
   border-radius: 6px;
-  background: var(--accent);
+  background: linear-gradient(180deg, #7db8ff, var(--accent));
 }
 
-.bar:hover:not(:disabled) .bar-fill {
+.bar:hover:not(:disabled) .bar-fill,
+.bar.selected .bar-fill {
   background: var(--heat-5);
+}
+
+.bar.selected .bar-day,
+.bar.selected .bar-value {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.bar.selected .bar-day {
+  text-decoration: underline 2px var(--accent);
+  text-underline-offset: 5px;
 }
 
 .bar-day {
@@ -456,8 +476,13 @@ button {
   font-weight: 700;
 }
 
-.cell:not(.blank):not(.future):hover {
+.cell:not(.blank):not(.future):hover,
+.cell.selected {
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+.cell.today.selected {
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--accent);
 }
 
 .legend {
@@ -494,7 +519,8 @@ button {
   min-width: 0;
 }
 
-button.stat:hover {
+button.stat:hover,
+button.stat.selected {
   border-color: var(--accent);
 }
 
@@ -579,15 +605,21 @@ button.stat:hover {
 }
 
 .app-icon img {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 
+/* No icon to show: the first letter on a colour of the app's own. */
 .app-icon .letter {
-  font-size: 13px;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
   font-weight: 700;
-  color: var(--ink);
+  color: #fff;
+  background: linear-gradient(135deg, hsl(var(--hue) 55% 42%), hsl(calc(var(--hue) + 30) 60% 30%));
 }
 
 .app-main {
@@ -761,4 +793,41 @@ button.stat:hover {
   font-size: 12.5px;
   color: var(--muted);
   text-align: center;
+}
+
+/* ---- a day opened in place from Week, Month or All time ---- */
+.picked {
+  border-color: #2f4f78;
+}
+
+.picked-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.picked-head .section-title {
+  margin-bottom: 2px;
+}
+
+.picked-head .icon-btn {
+  margin: -6px -6px 0 0;
+}
+
+.picked-total {
+  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.picked .limit {
+  margin-top: 10px;
+}
+
+.picked-apps {
+  margin-top: 10px;
 }

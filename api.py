@@ -15,7 +15,7 @@ from paths import user_data_path
 
 MIN_APP_SECONDS = 60
 MAX_APPS = 30
-SNOOZE_MINUTES = 5
+SNOOZE_OPTIONS = (5, 10, 15, 30)
 PERIOD_KINDS = ("day", "week", "month", "all")
 
 _log_lock = threading.Lock()
@@ -74,9 +74,12 @@ def _period_title(kind, first, last, today):
     return f"{first:%B %Y}"
 
 
-def _against(kind, is_current):
+def _against(kind, is_current, prev_first, today):
+    if kind == "day":
+        # A named date, not "the day before": looking at 16 Sep, "the day
+        # before" reads as though it means the day before today.
+        return "yesterday" if is_current else _short_date(prev_first, today)
     return {
-        "day": "yesterday" if is_current else "the day before",
         "week": "last week" if is_current else "the week before",
         "month": "last month" if is_current else "the month before",
     }[kind]
@@ -181,25 +184,37 @@ class Api:
         app_limits are daily limits, so they are only passed for a single
         day; set against a week's total they would read as broken.
         """
+        per_process = app_limits is not None
         app_limits = app_limits or {}
         significant = {
             n: s
             for n, s in seconds_by_name.items()
             if s >= MIN_APP_SECONDS and not storage.is_ignored_process(n)
         }
-        ranked = sorted(significant.items(), key=lambda kv: kv[1], reverse=True)[:MAX_APPS]
+        # Two processes of one app (python.exe and pythonw.exe, an app that
+        # renamed its .exe in an update) would otherwise be two rows with the
+        # same name. Merged, except on a single day, where limits are set per
+        # process and a merged row couldn't say which one it meant.
+        merged = {}
+        for process_name, seconds in sorted(significant.items(), key=lambda kv: kv[1], reverse=True):
+            name = storage.friendly_app_name(process_name)
+            key = process_name if per_process else name
+            if key in merged:
+                merged[key]["seconds"] += seconds
+            else:
+                merged[key] = {"name": name, "processName": process_name, "seconds": seconds}
+        ranked = sorted(merged.values(), key=lambda row: row["seconds"], reverse=True)
         rows = [
             {
-                "name": storage.friendly_app_name(name),
-                "processName": name,
-                "seconds": seconds,
-                "label": storage.format_hms(seconds),
-                "limitMinutes": app_limits.get(name),
-                "limitExceeded": bool(app_limits.get(name)) and seconds >= app_limits[name] * 60,
+                **row,
+                "label": storage.format_hms(row["seconds"]),
+                "limitMinutes": app_limits.get(row["processName"]),
+                "limitExceeded": bool(app_limits.get(row["processName"]))
+                and row["seconds"] >= app_limits[row["processName"]] * 60,
             }
-            for name, seconds in ranked
+            for row in ranked[:MAX_APPS]
         ]
-        return rows, len(significant)
+        return rows, len(ranked)
 
     @_logged
     def is_visible(self):
@@ -228,7 +243,7 @@ class Api:
             "startOnLogin": autostart.is_enabled(),
             "breakMinutes": settings["break_interval_minutes"],
             "breakInLabel": storage.format_hms(break_in) if break_in >= 60 else "under a minute",
-            "snoozeMinutes": SNOOZE_MINUTES,
+            "snoozeMinutes": settings["snooze_minutes"],
         }
 
     @_logged
@@ -268,16 +283,23 @@ class Api:
                 # given as plain context instead.
                 previous_label = storage.format_hms(prev_total) if prev_total else None
             elif kind == "day":
-                compare = _compare(total, prev_total, _against(kind, is_current))
+                compare = _compare(total, prev_total, _against(kind, is_current, prev_anchor, today))
             else:
                 # Averages, not totals: a week that started on Monday would
                 # otherwise always look far lighter than last week's seven
                 # full days.
                 prev_active = sum(1 for d in prev_days if d["seconds"] > 0)
                 prev_avg = prev_total // prev_active if prev_active else 0
-                compare = _compare(avg, prev_avg, _against(kind, is_current))
+                prev_first = _period_bounds(kind, prev_anchor)[0]
+                compare = _compare(avg, prev_avg, _against(kind, is_current, prev_first, today))
 
         apps = storage.apps_between(first, last)
+        if kind == "day":
+            # The Day tab shows the week around the day, so there's always
+            # context for "is this a lot?" and a one-tap way to the next day.
+            week_first, week_last = _period_bounds("week", anchor)
+            days = storage.days_between(week_first, week_last)
+            week_title = _period_title("week", week_first, week_last, today)
         return {
             "kind": kind,
             "anchor": str(anchor),
@@ -291,7 +313,8 @@ class Api:
             "activeDays": active_days,
             "compare": compare,
             "previousLabel": previous_label,
-            "days": days if kind != "day" else [],
+            "days": days,
+            "weekTitle": week_title if kind == "day" else None,
             **self._apps_payload(apps, settings.get("app_limits", {}) if kind == "day" else None),
         }
 
@@ -365,6 +388,16 @@ class Api:
         return True
 
     @_logged
+    def set_snooze_minutes(self, minutes):
+        minutes = int(minutes)
+        if minutes not in SNOOZE_OPTIONS:
+            return False
+        settings = storage.load_settings(default_on_error=False)
+        settings["snooze_minutes"] = minutes
+        storage.save_settings(settings)
+        return True
+
+    @_logged
     def set_app_limit(self, process_name, minutes):
         minutes = int(minutes) if minutes not in (None, "", 0, "0") else None
         storage.set_app_limit(process_name, minutes)
@@ -378,6 +411,6 @@ class Api:
 
     @_logged
     def snooze_break(self):
-        break_interval_seconds = storage.load_settings()["break_interval_minutes"] * 60
-        runtime.snooze(SNOOZE_MINUTES * 60, break_interval_seconds)
+        settings = storage.load_settings()
+        runtime.snooze(settings["snooze_minutes"] * 60, settings["break_interval_minutes"] * 60)
         return True

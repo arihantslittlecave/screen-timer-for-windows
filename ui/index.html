@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Screen Timer for Windows</title>
-  <link rel="stylesheet" href="style.css?v=70" />
+  <link rel="stylesheet" href="style.css?v=72" />
 </head>
 <body>
   <div class="app">
@@ -13,7 +13,13 @@
           <!-- Same mark as the app icon (icon_art.py): one bold arc,
                three quarters round, round ends. -->
           <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="6.2" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"
+            <defs>
+              <linearGradient id="mark-arc" x1="1" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#aad4ff" />
+                <stop offset="1" stop-color="#3480ff" />
+              </linearGradient>
+            </defs>
+            <circle cx="12" cy="12" r="6.2" stroke="url(#mark-arc)" stroke-width="3.2" stroke-linecap="round"
                     stroke-dasharray="29.2 9.8" transform="rotate(-90 12 12)" />
           </svg>
         </span>
@@ -57,6 +63,7 @@
 
       <section class="stats hidden" id="stats"></section>
       <section class="card hidden" id="chart"></section>
+      <section class="card picked hidden" id="picked" aria-live="polite"></section>
 
       <section class="card">
         <h2 class="section-title">Most used</h2>
@@ -92,11 +99,16 @@
           </div>
           <p class="setting-help">Starts counting by itself when you sign in.</p>
         </div>
+        <div class="setting">
+          <div class="setting-name" id="snooze-label">Snooze length</div>
+          <p class="setting-help">How long "Snooze" puts off the next break reminder.</p>
+          <div class="options" id="snooze-options" role="group" aria-labelledby="snooze-label"></div>
+        </div>
       </div>
       <p class="save-status" id="save-status" role="status"></p>
       <p class="footnote">Everything stays on this computer. Nothing is ever uploaded.</p>
     </section>
   </div>
-  <script src="app.js?v=70"></script>
+  <script src="app.js?v=72"></script>
 </body>
 </html>
