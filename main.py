@@ -88,6 +88,8 @@ SAVE_INTERVAL_SECONDS = 10
 # enough that a brief lock at boot passes unremarked, short enough that a
 # genuinely stuck app is reported while the user is still at the machine.
 STALL_ALERT_SECONDS = 120
+# A tick this late means the machine was asleep, not that the app was busy.
+SLEEP_GAP_SECONDS = 15
 TRAY_ICON_SIZE = 24  # drawn at tray size directly, rather than handing
 # pystray a large image that Windows would then have to shrink itself
 APP_NAME = "Screen Timer for Windows"
@@ -381,10 +383,22 @@ def tracking_loop():
     pending_paths = {}
     since_save = 0
     last_saved_at = time.time()
+    last_tick_at = time.time()
     stall_reported = False
 
     while True:
         time.sleep(TICK_INTERVAL_SECONDS)
+
+        # A one-second sleep that took far longer means the laptop was asleep
+        # (Modern Standby just pauses this thread). Asleep isn't failing to
+        # save, so that stretch is taken off the stall clock. Without this,
+        # the first flush after nearly every wake-up reported a locked data
+        # folder and put up a "can't save" notification — the log had it
+        # several times a day, each one matching a wake to the second.
+        now = time.time()
+        if now - last_tick_at > SLEEP_GAP_SECONDS:
+            last_saved_at += now - last_tick_at
+        last_tick_at = now
 
         # Deferring a write is normal and self-healing: a file locked for a
         # few seconds at boot gets retried on the next flush. Deferring for
