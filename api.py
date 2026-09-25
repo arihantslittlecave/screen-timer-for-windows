@@ -273,16 +273,12 @@ class Api:
         prev_anchor = first - timedelta(days=1)
         has_prev = prev_anchor >= earliest
         compare = None
-        previous_label = None
-        if has_prev:
+        # Today is still running, so "3h less than yesterday" would be true
+        # every morning and mean nothing; it gets no comparison at all.
+        if has_prev and not (kind == "day" and is_current):
             prev_days = storage.days_between(*_period_bounds(kind, prev_anchor))
             prev_total = sum(d["seconds"] for d in prev_days)
-            if kind == "day" and is_current:
-                # Today is still running, so "3h less than yesterday" would be
-                # true every morning and mean nothing. Yesterday's total is
-                # given as plain context instead.
-                previous_label = storage.format_hms(prev_total) if prev_total else None
-            elif kind == "day":
+            if kind == "day":
                 compare = _compare(total, prev_total, _against(kind, is_current, prev_anchor, today))
             else:
                 # Averages, not totals: a week that started on Monday would
@@ -312,7 +308,6 @@ class Api:
             "avgLabel": storage.format_hms(avg),
             "activeDays": active_days,
             "compare": compare,
-            "previousLabel": previous_label,
             "days": days,
             "weekTitle": week_title if kind == "day" else None,
             **self._apps_payload(apps, settings.get("app_limits", {}) if kind == "day" else None),
